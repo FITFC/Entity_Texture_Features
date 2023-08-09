@@ -2,12 +2,13 @@ package traben.entity_texture_features.config.screens;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.CubeMapRenderer;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.RotatingCubeMapRenderer;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.render.*;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.screen.ScreenTexts;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -21,13 +22,17 @@ import static traben.entity_texture_features.ETFClientCommon.MOD_ID;
 
 //inspired by puzzles custom gui code
 public abstract class ETFConfigScreen extends Screen {
-    static final RotatingCubeMapRenderer backgroundCube = new RotatingCubeMapRenderer(new CubeMapRenderer(new Identifier(MOD_ID + ":textures/gui/background/panorama")));
+    static final RotatingCubeMapRenderer backgroundCube = new RotatingCubeMapRenderer(new CubeMapRenderer(new Identifier(MOD_ID , "textures/gui/background/panorama")));
     public final Screen parent;
 
 
     public ETFConfigScreen(Text text, Screen parent) {
         super(text);
         this.parent = parent;
+    }
+
+    public static String booleanAsOnOff(boolean bool){
+        return ScreenTexts.onOrOff(bool).getString();
     }
 
     public static void renderGUITexture(Identifier texture, double x1, double y1, double x2, double y2) {
@@ -77,17 +82,19 @@ public abstract class ETFConfigScreen extends Screen {
     }
 
     @Override
-    public void render(MatrixStack matrices, int mouseX, int mouseY, float delta) {
-        // ETFUtils2.renderBackgroundTexture(0,new Identifier("textures/block/deepslate_tiles.png"),this.height,this.width);
+    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+
+
         backgroundCube.render((float) 0.5, 1);
 
         renderBackgroundTexture(0, new Identifier("textures/gui/options_background.png"), (int) (height * 0.15), width);
         renderBackgroundTexture(0, new Identifier("textures/gui/options_background.png"), height, width, (int) (height * 0.85));
-        fillGradient(matrices, 0, (int) (height * 0.15), width, (int) (height * 0.85), -1072689136, -804253680);
+        context.fillGradient( 0, (int) (height * 0.15), width, (int) (height * 0.85), -1072689136, -804253680);
 
-        drawCenteredTextWithShadow(matrices, textRenderer, title, width / 2, 15, 0xFFFFFF);
+        //context.fill(RenderLayer.getEndGateway(),0, (int) (height * 0.15), width, (int) (height * 0.85), ColorHelper.Argb.getArgb(255,255,255,255));
+        context.drawCenteredTextWithShadow(textRenderer, title, width / 2, 15, 0xFFFFFF);
 
-        super.render(matrices, mouseX, mouseY, delta);
+        super.render(context, mouseX, mouseY, delta);
     }
 
     public ButtonWidget getETFButton(int x, int y, int width, @SuppressWarnings("SameParameterValue") int height, Text buttonText, ButtonWidget.PressAction onPress) {
