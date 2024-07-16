@@ -1,6 +1,12 @@
 package traben.entity_texture_features.features.property_reading.properties.etf_properties;
 
-import net.minecraft.entity.mob.*;
+
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Blaze;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Guardian;
+import net.minecraft.world.entity.monster.SpellcasterIllager;
+import net.minecraft.world.entity.monster.Vindicator;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import traben.entity_texture_features.features.property_reading.properties.generic_properties.BooleanProperty;
@@ -27,30 +33,17 @@ public class AngryProperty extends BooleanProperty {
     @Override
     @Nullable
     protected Boolean getValueFromEntity(ETFEntity etfEntity) {
-
         if (etfEntity != null) {
-            if (etfEntity instanceof EndermanEntity enderman) {
-                return enderman.isAngry();
-            } else if (etfEntity instanceof BlazeEntity blaze) {
-                return blaze.isOnFire();
-            } else if (etfEntity instanceof GuardianEntity guardian) {
-                return guardian.getBeamTarget() != null;
-            } else if (etfEntity instanceof VindicatorEntity vindicator) {
-                return vindicator.isAttacking();
-            } else if (etfEntity instanceof SpellcastingIllagerEntity caster) {
-                return caster.isSpellcasting();
-            } else if (etfEntity instanceof Angerable angry) {
-                return angry.hasAngerTime();
-            }
+            if (etfEntity instanceof EnderMan enderman) return enderman.isCreepy();
+            if (etfEntity instanceof Blaze blaze) return blaze.isOnFire();
+            if (etfEntity instanceof Guardian guardian) return guardian.getActiveAttackTarget() != null;
+            if (etfEntity instanceof Vindicator vindicator) return vindicator.isAggressive();
+            if (etfEntity instanceof SpellcasterIllager caster) return caster.isCastingSpell();
+            if (etfEntity instanceof NeutralMob angry) return angry.isAngry();
         }
         return null;
     }
 
-
-    @Override
-    public boolean isPropertyUpdatable() {
-        return true;
-    }
 
     @Override
     public @NotNull String[] getPropertyIds() {

@@ -2,7 +2,7 @@ plugins {
     id "com.github.johnrengelman.shadow" version "8.1.1"
 }
 
-archivesBaseName = rootProject.archives_base_name + "_forge_1.20.3"
+archivesBaseName = rootProject.archives_base_name + "_forge_${rootProject.minecraft_version}"
 
 architectury {
     platformSetupLoomIde()
@@ -35,7 +35,8 @@ dependencies {
     // Remove the next line if you don't want to depend on the API
     //modApi "dev.architectury:architectury-forge:${rootProject.architectury_version}"
 
-    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+//    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+
 
     common(project(path: ":common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":common", configuration: "transformProductionForge")) { transitive = false }
@@ -44,21 +45,14 @@ dependencies {
     shadow('org.apache.httpcomponents:httpmime:4.5.14')
 
 
-    modImplementation("maven.modrinth:3dskinlayers:${project.skinlayers_version_forge}") {
-        //exclude(group: "net.fabricmc.fabric-api")
-    }
+//    modImplementation("maven.modrinth:3dskinlayers:${project.skinlayers_version_forge}") {
+//        //exclude(group: "net.fabricmc.fabric-api")
+//    }
 
     include group: 'org.apache.httpcomponents', name: 'httpmime', version: '4.5.10'
     implementation group: 'org.apache.httpcomponents', name: 'httpmime', version: '4.5.10'
 }
 
-processResources {
-    inputs.property "version", project.version
-
-    filesMatching("META-INF/mods.toml") {
-        expand "version": project.version
-    }
-}
 
 shadowJar {
     exclude "fabric.mod.json"

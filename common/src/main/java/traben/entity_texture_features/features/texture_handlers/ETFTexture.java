@@ -1,28 +1,29 @@
 package traben.entity_texture_features.features.texture_handlers;
 
+import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.Model;
-import net.minecraft.client.model.ModelPart;
-import net.minecraft.client.render.OverlayTexture;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.Sprite;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.EntityPose;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.item.trim.ArmorTrim;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.resource.ResourcePack;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackResources;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.item.armortrim.ArmorTrim;
+import org.intellij.lang.annotations.Identifier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import traben.entity_texture_features.ETFClientCommon;
-import traben.entity_texture_features.ETFVersionDifferenceHandler;
+import traben.entity_texture_features.ETF;
+import traben.entity_texture_features.config.ETFConfig;
 import traben.entity_texture_features.features.ETFManager;
 import traben.entity_texture_features.features.ETFRenderContext;
 import traben.entity_texture_features.utils.ETFEntity;
@@ -33,8 +34,6 @@ import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static traben.entity_texture_features.ETFClientCommon.ETFConfigData;
-
 
 //can either refer to a vanilla identifier or a variant
 public class ETFTexture {
@@ -43,26 +42,26 @@ public class ETFTexture {
     public final static String PATCH_NAMESPACE_PREFIX = "etf_patched_";
 
     //this variants id , might be vanilla
-    public final Identifier thisIdentifier;
-    private final int variantNumber;
+    public final ResourceLocation thisIdentifier;
+//    private final int variantNumber;
     public TextureReturnState currentTextureState = TextureReturnState.NORMAL;
     public String eSuffix = null;
     //a variation of thisIdentifier but with emissive texture pixels removed for z-fighting solution
-    private Identifier thisIdentifier_Patched = null;
+    private ResourceLocation thisIdentifier_Patched = null;
     //the emissive version of this texture
-    private Identifier emissiveIdentifier = null;
-    private Identifier emissiveBlinkIdentifier = null;
-    private Identifier emissiveBlink2Identifier = null;
+    private ResourceLocation emissiveIdentifier = null;
+    private ResourceLocation emissiveBlinkIdentifier = null;
+    private ResourceLocation emissiveBlink2Identifier = null;
 
-    private Identifier enchantIdentifier = null;
-    private Identifier enchantBlinkIdentifier = null;
-    private Identifier enchantBlink2Identifier = null;
-    private Identifier blinkIdentifier = null;
-    private Identifier blink2Identifier = null;
-    private Identifier blinkIdentifier_Patched = null;
-    private Identifier blink2Identifier_Patched = null;
-    private Integer blinkLength = ETFConfigData.blinkLength;
-    private Integer blinkFrequency = ETFConfigData.blinkFrequency;
+    private ResourceLocation enchantIdentifier = null;
+    private ResourceLocation enchantBlinkIdentifier = null;
+    private ResourceLocation enchantBlink2Identifier = null;
+    private ResourceLocation blinkIdentifier = null;
+    private ResourceLocation blink2Identifier = null;
+    private ResourceLocation blinkIdentifier_Patched = null;
+    private ResourceLocation blink2Identifier_Patched = null;
+    private Integer blinkLength = ETF.config().getConfig().blinkLength;
+    private Integer blinkFrequency = ETF.config().getConfig().blinkFrequency;
 
     // private final TextureSource source;
 
@@ -70,30 +69,32 @@ public class ETFTexture {
     private ETFSprite atlasSprite = null;
     private boolean hasBeenReRegistered = false;
     private Boolean resourceExists = null;
+    private boolean guiBlink = false;
+    private boolean hasPatched = false;
 
-    public ETFTexture(Identifier variantIdentifier) {
+    public ETFTexture(ResourceLocation variantIdentifier) {
 
         if (variantIdentifier == null) {
-            ETFUtils2.logError("ETFTexture had a null identifier this MUST never happen");
+            ETFUtils2.logError("ETFTexture had a null identifier this should NOT happen");
             //throw new IllegalArgumentException("ETFTexture had null identifier");
             thisIdentifier = null;
-            variantNumber = 0;
+//            variantNumber = 0;
             return;
         }
 
         this.thisIdentifier = variantIdentifier;
-        Pattern pattern = Pattern.compile("\\d+(?=\\.png)");
-        Matcher matcher = pattern.matcher(variantIdentifier.getPath());
-        int intFound = 0;
-        try {
-            if (matcher.find()) {
-                intFound = Integer.parseInt(matcher.group());
-
-            }
-        } catch (NumberFormatException ignored) {
-            // this.variantNumber = 0;
-        }
-        this.variantNumber = intFound;
+//        Pattern pattern = Pattern.compile("\\d+(?=\\.png)");
+//        Matcher matcher = pattern.matcher(variantIdentifier.getPath());
+//        int intFound = 0;
+//        try {
+//            if (matcher.find()) {
+//                intFound = Integer.parseInt(matcher.group());
+//
+//            }
+//        } catch (NumberFormatException ignored) {
+//            // this.variantNumber = 0;
+//        }
+//        this.variantNumber = intFound;
 //        canPatch = allowedToPatch;
 
         setupBlinking();
@@ -102,20 +103,20 @@ public class ETFTexture {
     }
 
     //alternative initiator for already known textures used for players
-    public ETFTexture(@NotNull Identifier modifiedSkinIdentifier,
-                      @Nullable Identifier blinkIdentifier,
-                      @Nullable Identifier blink2Identifier,
-                      @Nullable Identifier emissiveIdentifier,
-                      @Nullable Identifier blinkEmissiveIdentifier,
-                      @Nullable Identifier blink2EmissiveIdentifier,
-                      @Nullable Identifier enchantIdentifier,
-                      @Nullable Identifier blinkenchantIdentifier,
-                      @Nullable Identifier blink2enchantIdentifier,
-                      @Nullable Identifier patchIdentifier,
-                      @Nullable Identifier blinkpatchIdentifier,
-                      @Nullable Identifier blink2patchIdentifier) {
+    public ETFTexture(@NotNull ResourceLocation modifiedSkinIdentifier,
+                      @Nullable ResourceLocation blinkIdentifier,
+                      @Nullable ResourceLocation blink2Identifier,
+                      @Nullable ResourceLocation emissiveIdentifier,
+                      @Nullable ResourceLocation blinkEmissiveIdentifier,
+                      @Nullable ResourceLocation blink2EmissiveIdentifier,
+                      @Nullable ResourceLocation enchantIdentifier,
+                      @Nullable ResourceLocation blinkenchantIdentifier,
+                      @Nullable ResourceLocation blink2enchantIdentifier,
+                      @Nullable ResourceLocation patchIdentifier,
+                      @Nullable ResourceLocation blinkpatchIdentifier,
+                      @Nullable ResourceLocation blink2patchIdentifier) {
         //ALL input already tested and confirmed existing
-        this.variantNumber = 0;
+//        this.variantNumber = 0;
         this.thisIdentifier = modifiedSkinIdentifier;
         this.blinkIdentifier = blinkIdentifier;
         this.blink2Identifier = blink2Identifier;
@@ -130,74 +131,114 @@ public class ETFTexture {
         this.enchantBlink2Identifier = blink2enchantIdentifier;
 
         hasPatched = thisIdentifier_Patched != null;
-        if(hasPatched) {
+        if (hasPatched) {
             ETFManager.getInstance().ETF_TEXTURE_CACHE.put(thisIdentifier_Patched, this);
-            if(blinkIdentifier_Patched != null)
+            if (blinkIdentifier_Patched != null)
                 ETFManager.getInstance().ETF_TEXTURE_CACHE.put(blinkIdentifier_Patched, this);
-            if(blink2Identifier_Patched != null)
+            if (blink2Identifier_Patched != null)
                 ETFManager.getInstance().ETF_TEXTURE_CACHE.put(blink2Identifier_Patched, this);
         }
 
+
         //register this etf texture
-        ETFManager.getInstance().ETF_TEXTURE_CACHE.put(thisIdentifier,this);
+        ETFManager.getInstance().ETF_TEXTURE_CACHE.put(thisIdentifier, this);
+        if (blinkIdentifier != null)
+            ETFManager.getInstance().ETF_TEXTURE_CACHE.put(blinkIdentifier, this);
+        if (blink2Identifier != null)
+            ETFManager.getInstance().ETF_TEXTURE_CACHE.put(blink2Identifier, this);
     }
 
+
     //alternative initiator for already known textures used for MooShroom's mushrooms
-    private ETFTexture(@NotNull Identifier modifiedSkinIdentifier,
-                       @Nullable Identifier emissiveIdentifier) {
+    private ETFTexture(@NotNull ResourceLocation modifiedSkinIdentifier,
+                       @Nullable ResourceLocation emissiveIdentifier) {
 
         //ALL input already tested and confirmed existing
-        this.variantNumber = 0;
+//        this.variantNumber = 0;
         this.thisIdentifier = modifiedSkinIdentifier;
         this.emissiveIdentifier = emissiveIdentifier;
 
 //        ETFManager.getInstance().registerStaticallyCreatedTexture(thisIdentifier,this);
     }
 
-    public static ETFTexture ofUnmodifiable(@NotNull Identifier identifier, @Nullable Identifier emissiveIdentifier) {
-        return new ETFTexture(identifier,emissiveIdentifier);
+    public static ETFTexture ofUnmodifiable(@NotNull ResourceLocation identifier, @Nullable ResourceLocation emissiveIdentifier) {
+        return new ETFTexture(identifier, emissiveIdentifier);
     }
 
+    public static void patchTextureToRemoveZFightingWithOtherTexture(NativeImage baseImage, NativeImage otherImage) throws IndexOutOfBoundsException {
+        //here we alter the first image removing all pixels that are present in the second image to prevent z fighting
+        //this does not support transparency and is a hard counter to f-fighting
+        try {
+            if (otherImage.getWidth() == baseImage.getWidth() && otherImage.getHeight() == baseImage.getHeight()) {
+                //float widthMultipleEmissive  = originalCopy.getWidth()  / (float)emissive.getWidth();
+                //float heightMultipleEmissive = originalCopy.getHeight() / (float)emissive.getHeight();
 
-    public int getVariantNumber() {
-        return variantNumber;
+                for (int x = 0; x < baseImage.getWidth(); x++) {
+                    for (int y = 0; y < baseImage.getHeight(); y++) {
+                        //int newX = Math.min((int)(x*widthMultipleEmissive),originalCopy.getWidth()-1);
+                        //int newY = Math.min((int)(y*heightMultipleEmissive),originalCopy.getHeight()-1);
+                        if (otherImage.getLuminanceOrAlpha(x, y) != 0) {
+                            baseImage.setPixelRGBA(x, y, 0);
+                        }
+                    }
+                }
+            }
+            //return baseImage;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new IndexOutOfBoundsException("additional texture is not the correct size, ETF has crashed in the patching stage");
+        }
     }
+
+    private static boolean doesAnimaticaVersionExist(ResourceLocation identifier) {
+        if (identifier == null) return false;
+        String idString = identifier.toString();
+        //check if its already an anim and animatica has already gotten to replacing it before etf sees it
+        if (idString.endsWith("-anim")) return true;
+        //check if animatica has registered its animated version of this texture
+        //noinspection ConstantValue
+        return Minecraft.getInstance().getTextureManager().getTexture(ETFUtils2.res(idString + "-anim"), null) != null;
+    }
+
+//    public int getVariantNumber() {
+//        return variantNumber;
+//    }
 
     private void setupBlinking() {
-        if (ETFConfigData.enableBlinking) {
-            ResourceManager resourceManager = MinecraftClient.getInstance().getResourceManager();
+        if (ETF.config().getConfig().enableBlinking) {
+            ResourceManager resourceManager = Minecraft.getInstance().getResourceManager();
             Optional<Resource> vanillaR1 = resourceManager.getResource(thisIdentifier);
             if (vanillaR1.isPresent()) {
-                Identifier possibleBlinkIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink.png");
+                ResourceLocation possibleBlinkIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink.png");
                 Optional<Resource> blinkR1 = resourceManager.getResource(possibleBlinkIdentifier);
                 if (blinkR1.isPresent()) {
 
-                    String blink1PackName = blinkR1.get().getResourcePackName();
+                    String blink1PackName = blinkR1.get().sourcePackId();
                     //ObjectSet<String> packs = new ObjectOpenHashSet<>();
                     // packs.add(blink1PackName);
-                    // packs.add(vanillaR1.get().getResourcePackName());
+                    // packs.add(vanillaR1.get().getPackId());
 
-                    if (blink1PackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(blink1PackName, vanillaR1.get().getResourcePackName()))) {
+                    if (blink1PackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(blink1PackName, vanillaR1.get().sourcePackId()))) {
                         //is higher or same pack
                         blinkIdentifier = possibleBlinkIdentifier;
 
 
-                        Identifier possibleBlink2Identifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink2.png");
+                        ResourceLocation possibleBlink2Identifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink2.png");
                         Optional<Resource> blinkR2 = resourceManager.getResource(possibleBlink2Identifier);
                         if (blinkR2.isPresent()) {
-                            String blink2PackName = blinkR2.get().getResourcePackName();
+                            String blink2PackName = blinkR2.get().sourcePackId();
                             if (blink1PackName.equals(blink2PackName)) {
                                 blink2Identifier = possibleBlink2Identifier;
                             }
                         }
 
                         //read possible blinking properties
-                        Identifier propertyIdentifier = ETFUtils2.replaceIdentifier(possibleBlinkIdentifier, ".png", ".properties");
+                        ResourceLocation propertyIdentifier = ETFUtils2.replaceIdentifier(possibleBlinkIdentifier, ".png", ".properties");
                         Properties blinkingProps = ETFUtils2.readAndReturnPropertiesElseNull(propertyIdentifier);
                         if (blinkingProps != null) {
                             Optional<Resource> propertyResource = resourceManager.getResource(propertyIdentifier);
                             if (propertyResource.isPresent()) {
-                                String propertyResourcePackName = propertyResource.get().getResourcePackName();
+                                String propertyResourcePackName = propertyResource.get().sourcePackId();
                                 //packs.clear();
                                 //packs.add(propertyResourcePackName);
                                 //packs.add(blink1PackName);
@@ -205,10 +246,10 @@ public class ETFTexture {
                                 if (propertyResourcePackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(propertyResourcePackName, blink1PackName))) {
                                     blinkLength = blinkingProps.containsKey("blinkLength") ?
                                             Integer.parseInt(blinkingProps.getProperty("blinkLength").replaceAll("\\D", "")) :
-                                            ETFConfigData.blinkLength;
+                                            ETF.config().getConfig().blinkLength;
                                     blinkFrequency = blinkingProps.containsKey("blinkFrequency") ?
                                             Integer.parseInt(blinkingProps.getProperty("blinkFrequency").replaceAll("\\D", "")) :
-                                            ETFConfigData.blinkFrequency;
+                                            ETF.config().getConfig().blinkFrequency;
 
                                 }
 
@@ -222,7 +263,7 @@ public class ETFTexture {
 
     public boolean exists() {
         if (resourceExists == null) {
-            resourceExists = MinecraftClient.getInstance().getResourceManager().getResource(thisIdentifier).isPresent();
+            resourceExists = Minecraft.getInstance().getResourceManager().getResource(thisIdentifier).isPresent();
         }
         return isBuilt || resourceExists;
     }
@@ -231,30 +272,30 @@ public class ETFTexture {
 //        trim=minecraft:trims/models/armor/rib_gold
 //        trim2=minecraft:trims/models/armor/rib_leggings_gold
         try {
-            String mat = trim.getMaterial().value().assetName();
-            String namespace = trim.getPattern().value().assetId().getNamespace();
-            String pattern = trim.getPattern().value().assetId().getPath() + (leggings ? "_leggings" : "");
+            String mat = trim.material().value().assetName();
+            String namespace = trim.pattern().value().assetId().getNamespace();
+            String pattern = trim.pattern().value().assetId().getPath() + (leggings ? "_leggings" : "");
 
-            NativeImage patternImg = ETFUtils2.getNativeImageElseNull(new Identifier(namespace, "textures/trims/models/armor/" + pattern + ".png"));
+            NativeImage patternImg = ETFUtils2.getNativeImageElseNull(ETFUtils2.res(namespace, "textures/trims/models/armor/" + pattern + ".png"));
 
-            NativeImage matImg = ETFUtils2.getNativeImageElseNull(new Identifier(namespace, "textures/trims/color_palettes/" + mat + ".png"));
-            NativeImage palletteImg = ETFUtils2.getNativeImageElseNull(new Identifier(namespace, "textures/trims/color_palettes/trim_palette.png"));
+            NativeImage matImg = ETFUtils2.getNativeImageElseNull(ETFUtils2.res(namespace, "textures/trims/color_palettes/" + mat + ".png"));
+            NativeImage palletteImg = ETFUtils2.getNativeImageElseNull(ETFUtils2.res(namespace, "textures/trims/color_palettes/trim_palette.png"));
 
             if (matImg != null && palletteImg != null && patternImg != null) {
                 Int2IntOpenHashMap palletteMap = new Int2IntOpenHashMap();
                 for (int i = 0; i < palletteImg.getWidth(); i++) {
                     for (int j = 0; j < palletteImg.getHeight(); j++) {
-                        palletteMap.put(palletteImg.getColor(i, j), matImg.getColor(i, j));
+                        palletteMap.put(palletteImg.getPixelRGBA(i, j), matImg.getPixelRGBA(i, j));
                     }
                 }
                 try (NativeImage newImage = ETFUtils2.emptyNativeImage(patternImg.getWidth(), patternImg.getHeight())) {
                     for (int i = 0; i < patternImg.getWidth(); i++) {
                         for (int j = 0; j < patternImg.getHeight(); j++) {
-                            int colour = patternImg.getColor(i, j);
+                            int colour = patternImg.getPixelRGBA(i, j);
                             if (palletteMap.containsKey(colour)) {
-                                newImage.setColor(i, j, palletteMap.get(colour));
+                                newImage.setPixelRGBA(i, j, palletteMap.get(colour));
                             } else {
-                                newImage.setColor(i, j, colour);
+                                newImage.setPixelRGBA(i, j, colour);
                             }
                         }
                     }
@@ -277,127 +318,99 @@ public class ETFTexture {
 
     private void setupEmissives() {
 
-        if (ETFConfigData.enableEmissiveTextures) {
-            ResourceManager resourceManager = MinecraftClient.getInstance().getResourceManager();
+        //if (ETF.config().getConfig().enableEmissiveTextures) {
+        ResourceManager resourceManager = Minecraft.getInstance().getResourceManager();
 
-            for (String possibleEmissiveSuffix :
-                    ETFManager.getInstance().EMISSIVE_SUFFIX_LIST) {
-                Optional<Resource> vanillaR1 = resourceManager.getResource(thisIdentifier);
-                if (vanillaR1.isEmpty() && thisIdentifier.getPath().contains("textures/trims/models/armor/")) {
-                    //create this armor trim as an identifier because fuck Sprites, all my homies hate Sprites
+        for (String possibleEmissiveSuffix :
+                ETFManager.getInstance().EMISSIVE_SUFFIX_LIST) {
+            var vanillaR1 = getResourceOrModifyForTrims(resourceManager);
+            if (vanillaR1.isPresent()) {
+                ResourceLocation possibleEmissiveIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", possibleEmissiveSuffix + ".png");
+                Optional<Resource> emissiveR1 = resourceManager.getResource(possibleEmissiveIdentifier);
+                if (emissiveR1.isPresent()) {
 
-                    //try get an armor trims base texture just to match what texture pack level it is
-                    ResourcePack pack;
-                    vanillaR1 = resourceManager.getResource(new Identifier(thisIdentifier.getNamespace(), thisIdentifier.getPath().replaceAll("_(.*?)(?=\\.png)", "")));
-                    if (vanillaR1.isPresent()) {
-                        pack = vanillaR1.get().getPack();
-                    } else {
-                        pack = MinecraftClient.getInstance().getDefaultResourcePack();
-                    }
-                    //create resource object sufficient for following code
-                    vanillaR1 = Optional.of(new Resource(pack, null));
-                }
-                if (vanillaR1.isPresent()) {
-                    Identifier possibleEmissiveIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", possibleEmissiveSuffix + ".png");
-                    Optional<Resource> emissiveR1 = resourceManager.getResource(possibleEmissiveIdentifier);
-                    if (emissiveR1.isPresent()) {
-
-                        String emissivePackName = emissiveR1.get().getResourcePackName();
+                    String emissivePackName = emissiveR1.get().sourcePackId();
 //                        ObjectSet<String> packs = new ObjectOpenHashSet<>();
 //                        packs.add(emissivePackName);
-//                        packs.add(vanillaR1.get().getResourcePackName());
-                        if (emissivePackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(emissivePackName, vanillaR1.get().getResourcePackName()))) {
-                            //is higher or same pack
-                            emissiveIdentifier = possibleEmissiveIdentifier;
-                            Identifier possibleEmissiveBlinkIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink" + possibleEmissiveSuffix + ".png");
-                            Optional<Resource> emissiveBlinkR1 = resourceManager.getResource(possibleEmissiveBlinkIdentifier);
-                            if (emissiveBlinkR1.isPresent()) {
+//                        packs.add(vanillaR1.get().getPackId());
+                    if (emissivePackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(emissivePackName, vanillaR1.get().sourcePackId()))) {
+                        //is higher or same pack
+                        emissiveIdentifier = possibleEmissiveIdentifier;
+                        ResourceLocation possibleEmissiveBlinkIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink" + possibleEmissiveSuffix + ".png");
+                        Optional<Resource> emissiveBlinkR1 = resourceManager.getResource(possibleEmissiveBlinkIdentifier);
+                        if (emissiveBlinkR1.isPresent()) {
 
-                                String emissiveBlinkPackName = emissiveBlinkR1.get().getResourcePackName();
-                                //packs.clear();
-                                //packs.add(emissiveBlinkPackName);
-                                //packs.add(vanillaR1.get().getResourcePackName());
-                                if (emissiveBlinkPackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(emissiveBlinkPackName, vanillaR1.get().getResourcePackName()))) {
-                                    //is higher or same pack
-                                    emissiveBlinkIdentifier = possibleEmissiveBlinkIdentifier;
-                                    Identifier possibleEmissiveBlink2Identifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink2" + possibleEmissiveSuffix + ".png");
-                                    Optional<Resource> emissiveBlink2R1 = resourceManager.getResource(possibleEmissiveBlink2Identifier);
-                                    if (emissiveBlink2R1.isPresent()) {
-                                        String emissiveBlink2PackName = emissiveBlink2R1.get().getResourcePackName();
-                                        // packs.clear();
-                                        // packs.add(emissiveBlink2PackName);
-                                        // packs.add(vanillaR1.get().getResourcePackName());
-                                        if (emissiveBlink2PackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(emissiveBlink2PackName, vanillaR1.get().getResourcePackName()))) {
-                                            //is higher or same pack
-                                            emissiveBlink2Identifier = possibleEmissiveBlink2Identifier;
-                                        }
+                            String emissiveBlinkPackName = emissiveBlinkR1.get().sourcePackId();
+                            //packs.clear();
+                            //packs.add(emissiveBlinkPackName);
+                            //packs.add(vanillaR1.get().getPackId());
+                            if (emissiveBlinkPackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(emissiveBlinkPackName, vanillaR1.get().sourcePackId()))) {
+                                //is higher or same pack
+                                emissiveBlinkIdentifier = possibleEmissiveBlinkIdentifier;
+                                ResourceLocation possibleEmissiveBlink2Identifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink2" + possibleEmissiveSuffix + ".png");
+                                Optional<Resource> emissiveBlink2R1 = resourceManager.getResource(possibleEmissiveBlink2Identifier);
+                                if (emissiveBlink2R1.isPresent()) {
+                                    String emissiveBlink2PackName = emissiveBlink2R1.get().sourcePackId();
+                                    // packs.clear();
+                                    // packs.add(emissiveBlink2PackName);
+                                    // packs.add(vanillaR1.get().getPackId());
+                                    if (emissiveBlink2PackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(emissiveBlink2PackName, vanillaR1.get().sourcePackId()))) {
+                                        //is higher or same pack
+                                        emissiveBlink2Identifier = possibleEmissiveBlink2Identifier;
                                     }
                                 }
                             }
-                            //emissive found and is valid
-                            eSuffix = possibleEmissiveSuffix;
-                            break;
                         }
+                        //emissive found and is valid
+                        eSuffix = possibleEmissiveSuffix;
+                        break;
                     }
                 }
             }
+        }
 //            if (isEmissive())
 //                createPatchedTextures();
-        }
+        //}
     }
 
     private void setupEnchants() {
 
-        if (ETFConfigData.enableEnchantedTextures) {
-            ResourceManager resourceManager = MinecraftClient.getInstance().getResourceManager();
+        if (ETF.config().getConfig().enableEnchantedTextures) {
+            ResourceManager resourceManager = Minecraft.getInstance().getResourceManager();
 
             String enchantSuffix = "_enchant";
-            Optional<Resource> vanillaR1 = resourceManager.getResource(thisIdentifier);
-            if (vanillaR1.isEmpty() && thisIdentifier.getPath().contains("textures/trims/models/armor/")) {
-                //create this armor trim as an identifier because fuck Sprites, all my homies hate Sprites
-
-                //try get an armor trims base texture just to match what texture pack level it is
-                ResourcePack pack;
-                vanillaR1 = resourceManager.getResource(new Identifier(thisIdentifier.getNamespace(), thisIdentifier.getPath().replaceAll("_(.*?)(?=\\.png)", "")));
-                if (vanillaR1.isPresent()) {
-                    pack = vanillaR1.get().getPack();
-                } else {
-                    pack = MinecraftClient.getInstance().getDefaultResourcePack();
-                }
-                //create resource object sufficient for following code
-                vanillaR1 = Optional.of(new Resource(pack, null));
-            }
+            Optional<Resource> vanillaR1 = getResourceOrModifyForTrims(resourceManager);
             if (vanillaR1.isPresent()) {
-                Identifier possibleEnchantIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", enchantSuffix + ".png");
+                ResourceLocation possibleEnchantIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", enchantSuffix + ".png");
                 Optional<Resource> enchantR1 = resourceManager.getResource(possibleEnchantIdentifier);
                 if (enchantR1.isPresent()) {
 
-                    String enchantPackName = enchantR1.get().getResourcePackName();
+                    String enchantPackName = enchantR1.get().sourcePackId();
 //                        ObjectSet<String> packs = new ObjectOpenHashSet<>();
 //                        packs.add(emissivePackName);
-//                        packs.add(vanillaR1.get().getResourcePackName());
-                    if (enchantPackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(enchantPackName, vanillaR1.get().getResourcePackName()))) {
+//                        packs.add(vanillaR1.get().getPackId());
+                    if (enchantPackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(enchantPackName, vanillaR1.get().sourcePackId()))) {
                         //is higher or same pack
                         enchantIdentifier = possibleEnchantIdentifier;
-                        Identifier possibleEnchantBlinkIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink" + enchantSuffix + ".png");
+                        ResourceLocation possibleEnchantBlinkIdentifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink" + enchantSuffix + ".png");
                         Optional<Resource> enchantBlinkR1 = resourceManager.getResource(possibleEnchantBlinkIdentifier);
                         if (enchantBlinkR1.isPresent()) {
 
-                            String enchantBlinkPackName = enchantBlinkR1.get().getResourcePackName();
+                            String enchantBlinkPackName = enchantBlinkR1.get().sourcePackId();
                             //packs.clear();
                             //packs.add(emissiveBlinkPackName);
-                            //packs.add(vanillaR1.get().getResourcePackName());
-                            if (enchantBlinkPackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(enchantBlinkPackName, vanillaR1.get().getResourcePackName()))) {
+                            //packs.add(vanillaR1.get().getPackId());
+                            if (enchantBlinkPackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(enchantBlinkPackName, vanillaR1.get().sourcePackId()))) {
                                 //is higher or same pack
                                 enchantBlinkIdentifier = possibleEnchantBlinkIdentifier;
-                                Identifier possibleEnchantBlink2Identifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink2" + enchantSuffix + ".png");
+                                ResourceLocation possibleEnchantBlink2Identifier = ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_blink2" + enchantSuffix + ".png");
                                 Optional<Resource> enchantBlink2R1 = resourceManager.getResource(possibleEnchantBlink2Identifier);
                                 if (enchantBlink2R1.isPresent()) {
-                                    String enchantBlink2PackName = enchantBlink2R1.get().getResourcePackName();
+                                    String enchantBlink2PackName = enchantBlink2R1.get().sourcePackId();
                                     // packs.clear();
                                     // packs.add(emissiveBlink2PackName);
-                                    // packs.add(vanillaR1.get().getResourcePackName());
-                                    if (enchantBlink2PackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(enchantBlink2PackName, vanillaR1.get().getResourcePackName()))) {
+                                    // packs.add(vanillaR1.get().getPackId());
+                                    if (enchantBlink2PackName.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(enchantBlink2PackName, vanillaR1.get().sourcePackId()))) {
                                         //is higher or same pack
                                         enchantBlink2Identifier = possibleEnchantBlink2Identifier;
                                     }
@@ -413,52 +426,75 @@ public class ETFTexture {
         }
     }
 
+    private Optional<Resource> getResourceOrModifyForTrims(final ResourceManager resourceManager) {
+        Optional<Resource> vanillaR1 = resourceManager.getResource(thisIdentifier);
+        if (vanillaR1.isEmpty() && thisIdentifier.getPath().contains("textures/trims/models/armor/")) {
+            //create this armor trim as an identifier because fuck Sprites, all my homies hate Sprites
+
+            //try get an armor trims base texture just to match what texture pack level it is
+            PackResources pack;
+            vanillaR1 = resourceManager.getResource(ETFUtils2.res(thisIdentifier.getNamespace(), thisIdentifier.getPath().replaceAll("_(.*?)(?=\\.png)", "")));
+            pack = vanillaR1.map(Resource::source)
+                    .orElseGet(() -> Minecraft.getInstance().getVanillaPackResources());
+            //create resource object sufficient for following code
+            vanillaR1 = Optional.of(new Resource(pack, null));
+        }
+        return vanillaR1;
+    }
+
     /**
      * Re registers the base texture to a new identifier, this fixes some iris stuff with armor.
      */
-    public void reRegisterBaseTexture() {
+    public void reRegisterBaseTexture() {//todo needed
         if (hasBeenReRegistered) return;
         hasPatched = true;
         hasBeenReRegistered = true;
         NativeImage newBaseTexture = ETFUtils2.getNativeImageElseNull(thisIdentifier);
-        thisIdentifier_Patched = new Identifier(PATCH_NAMESPACE_PREFIX + thisIdentifier.getNamespace(), thisIdentifier.getPath());
-        ETFUtils2.registerNativeImageToIdentifier(newBaseTexture, thisIdentifier_Patched);
-        ETFManager.getInstance().ETF_TEXTURE_CACHE.put(thisIdentifier_Patched, this);
+        if (newBaseTexture != null) {
+            var newPatchIdentifier = ETFUtils2.res(PATCH_NAMESPACE_PREFIX + thisIdentifier.getNamespace(), thisIdentifier.getPath());
+            if (ETFUtils2.registerNativeImageToIdentifier(newBaseTexture, newPatchIdentifier)) {
+                thisIdentifier_Patched = newPatchIdentifier;
+                ETFManager.getInstance().ETF_TEXTURE_CACHE.put(thisIdentifier_Patched, this);
+            } else {
+                //assert
+                thisIdentifier_Patched = null;
+            }
+        }
 
     }
 
-
     @NotNull
-    public Identifier getTextureIdentifier(@Nullable ETFEntity entity) {
+    public ResourceLocation getTextureIdentifier(@Nullable ETFEntity entity) {
         if (canPatch()) {
             //patched required
             currentTextureState = TextureReturnState.NORMAL_PATCHED;
-        }else{
+        } else {
             currentTextureState = TextureReturnState.NORMAL;
         }
         return getBlinkingIdentifier(entity);
     }
 
     @NotNull
-    private Identifier getBlinkingIdentifier(@Nullable ETFEntity entity) {
+    private ResourceLocation getBlinkingIdentifier(@Nullable ETFEntity entity) {
         if (!doesBlink() || !(entity instanceof LivingEntity)) {
             return identifierOfCurrentState();
         }
-        if(guiBlink){
-            setBlink(Math.abs((int) System.currentTimeMillis()/20 % 50000), 0);
-        }else if (entity.etf$getPose() == EntityPose.SLEEPING) {
+
+
+        if (guiBlink) {
+            setBlink(Math.abs((int) System.currentTimeMillis() / 20 % 50000), 0);
+        } else if (((LivingEntity) entity).hasPose(Pose.SLEEPING)) {
             //force eyes closed if asleep
             modifyTextureState(TextureReturnState.APPLY_BLINK);
-        } else if (((LivingEntity) entity).hasStatusEffect(StatusEffects.BLINDNESS)) {
+        } else if (((LivingEntity) entity).hasEffect(MobEffects.BLINDNESS)) {
             //force eyes closed if blinded
             modifyTextureState(doesBlink2() ? TextureReturnState.APPLY_BLINK2 : TextureReturnState.APPLY_BLINK);
         } else {
             //do regular blinking
-            setBlink(((LivingEntity) entity).age, Math.abs(entity.etf$getUuid().hashCode()));
+            setBlink(((LivingEntity) entity).tickCount, Math.abs(entity.etf$getUuid().hashCode()));
         }
         return identifierOfCurrentState();
     }
-
 
     private void setBlink(int currentTime, int hash) {
         int uuidHash = hash % (blinkFrequency * 2) + 20 + blinkFrequency;
@@ -477,9 +513,8 @@ public class ETFTexture {
         }
     }
 
-    private boolean guiBlink = false;
-    public void setGUIBlink(){
-        System.out.println("set blink");
+    public void setGUIBlink() {
+//        System.out.println("set blink");
         blinkFrequency = 100;
         blinkLength = 40;
         guiBlink = true;
@@ -488,6 +523,7 @@ public class ETFTexture {
     public boolean isEmissive() {
         return this.emissiveIdentifier != null;
     }
+
     public boolean isEnchanted() {
         return this.enchantIdentifier != null;
     }
@@ -501,9 +537,9 @@ public class ETFTexture {
     }
 
     @NotNull
-    public ETFSprite getSprite(@NotNull Sprite originalSprite) {
+    public ETFSprite getPaintingSprite(@NotNull TextureAtlasSprite originalSprite, @Nullable ResourceLocation originalID) {
         if (atlasSprite == null) {
-            atlasSprite = new ETFSprite(originalSprite, this);
+            atlasSprite = new ETFSprite(originalSprite, this, thisIdentifier.equals(originalID));
         }
         return atlasSprite;
     }
@@ -517,35 +553,34 @@ public class ETFTexture {
         return "[" + this.thisIdentifier.toString() + ", emissive=" + isEmissive() + ", blinks=" + doesBlink() + "]";
     }
 
-    public void renderEmissive(MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, ModelPart modelPart) {
+    public void renderEmissive(PoseStack matrixStack, MultiBufferSource vertexConsumerProvider, ModelPart modelPart) {
         renderEmissive(matrixStack, vertexConsumerProvider, modelPart, ETFManager.getEmissiveMode());
     }
 
-
-    public void renderEmissive(MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, ModelPart modelPart, ETFManager.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
+    public void renderEmissive(PoseStack matrixStack, MultiBufferSource vertexConsumerProvider, ModelPart modelPart, ETFConfig.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
         VertexConsumer vertexC = getEmissiveVertexConsumer(vertexConsumerProvider, null, modeToUsePossiblyManuallyChosen);
         if (vertexC != null) {
             ETFRenderContext.startSpecialRenderOverlayPhase();
-            modelPart.render(matrixStack, vertexC, ETFClientCommon.EMISSIVE_FEATURE_LIGHT_VALUE, OverlayTexture.DEFAULT_UV);
+            modelPart.render(matrixStack, vertexC, ETF.EMISSIVE_FEATURE_LIGHT_VALUE, OverlayTexture.NO_OVERLAY);
             ETFRenderContext.endSpecialRenderOverlayPhase();
         }
     }
 
-    public void renderEmissive(MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, Model model) {
+    public void renderEmissive(PoseStack matrixStack, MultiBufferSource vertexConsumerProvider, Model model) {
         renderEmissive(matrixStack, vertexConsumerProvider, model, ETFManager.getEmissiveMode());
     }
 
-    public void renderEmissive(MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, Model model, ETFManager.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
+    public void renderEmissive(PoseStack matrixStack, MultiBufferSource vertexConsumerProvider, Model model, ETFConfig.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
         VertexConsumer vertexC = getEmissiveVertexConsumer(vertexConsumerProvider, model, modeToUsePossiblyManuallyChosen);
         if (vertexC != null) {
             ETFRenderContext.startSpecialRenderOverlayPhase();
-            model.render(matrixStack, vertexC, ETFClientCommon.EMISSIVE_FEATURE_LIGHT_VALUE, OverlayTexture.DEFAULT_UV, 1, 1, 1, 1);
+            model.renderToBuffer(matrixStack, vertexC, ETF.EMISSIVE_FEATURE_LIGHT_VALUE, OverlayTexture.NO_OVERLAY #if MC < MC_21 , 1F, 1F, 1F, 1F #endif);
             ETFRenderContext.endSpecialRenderOverlayPhase();
         }
     }
 
     @Nullable
-    public VertexConsumer getEmissiveVertexConsumer(VertexConsumerProvider vertexConsumerProvider, @Nullable Model model, ETFManager.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
+    public VertexConsumer getEmissiveVertexConsumer(MultiBufferSource vertexConsumerProvider, @Nullable Model model, ETFConfig.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
         ETFRenderContext.preventRenderLayerTextureModify();
         VertexConsumer wrapped = getEmissiveVertexConsumerWrapped(vertexConsumerProvider, model, modeToUsePossiblyManuallyChosen);
         ETFRenderContext.allowRenderLayerTextureModify();
@@ -554,19 +589,19 @@ public class ETFTexture {
     }
 
     @Nullable
-    private VertexConsumer getEmissiveVertexConsumerWrapped(VertexConsumerProvider vertexConsumerProvider, @Nullable Model model, ETFManager.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
+    private VertexConsumer getEmissiveVertexConsumerWrapped(MultiBufferSource vertexConsumerProvider, @Nullable Model model, ETFConfig.EmissiveRenderModes modeToUsePossiblyManuallyChosen) {
         if (isEmissive()) {
-            Identifier emissiveToUse = getEmissiveIdentifierOfCurrentState();
+            ResourceLocation emissiveToUse = getEmissiveIdentifierOfCurrentState();
 
             if (emissiveToUse != null) {
 
-                if (modeToUsePossiblyManuallyChosen == ETFManager.EmissiveRenderModes.BRIGHT) {
-                    return vertexConsumerProvider.getBuffer(RenderLayer.getBeaconBeam(emissiveToUse, true));
+                if (modeToUsePossiblyManuallyChosen == ETFConfig.EmissiveRenderModes.BRIGHT) {
+                    return vertexConsumerProvider.getBuffer(RenderType.beaconBeam(emissiveToUse, true));
                 } else {
                     if (model == null) {
-                        return vertexConsumerProvider.getBuffer(RenderLayer.getEntityCutoutNoCull /*RenderLayer.getEntityTranslucent*/(emissiveToUse));
+                        return vertexConsumerProvider.getBuffer(RenderType.entityCutoutNoCull /*RenderLayer.getEntityTranslucent*/(emissiveToUse));
                     } else {
-                        return vertexConsumerProvider.getBuffer(model.getLayer(emissiveToUse));
+                        return vertexConsumerProvider.getBuffer(model.renderType(emissiveToUse));
                     }
                 }
             }
@@ -587,7 +622,7 @@ public class ETFTexture {
     }
 
     @NotNull
-    private Identifier identifierOfCurrentState() {
+    private ResourceLocation identifierOfCurrentState() {
         return switch (currentTextureState) {
             case NORMAL -> thisIdentifier;
             case NORMAL_PATCHED -> thisIdentifier_Patched;
@@ -602,9 +637,9 @@ public class ETFTexture {
     }
 
     @Nullable
-    public Identifier getEmissiveIdentifierOfCurrentState() {
+    public ResourceLocation getEmissiveIdentifierOfCurrentState() {
         return switch (currentTextureState) {
-            case NORMAL, NORMAL_PATCHED  -> emissiveIdentifier;
+            case NORMAL, NORMAL_PATCHED -> emissiveIdentifier;
             case BLINK, BLINK_PATCHED -> emissiveBlinkIdentifier;
             case BLINK2, BLINK2_PATCHED -> emissiveBlink2Identifier;
             default ->
@@ -614,7 +649,7 @@ public class ETFTexture {
     }
 
     @Nullable
-    public Identifier getEnchantIdentifierOfCurrentState() {
+    public ResourceLocation getEnchantIdentifierOfCurrentState() {
         return switch (currentTextureState) {
             case NORMAL, NORMAL_PATCHED -> enchantIdentifier;
             case BLINK, BLINK_PATCHED -> enchantBlinkIdentifier;
@@ -625,78 +660,15 @@ public class ETFTexture {
         };
     }
 
-    public enum TextureReturnState {
-        NORMAL,
-        NORMAL_PATCHED,
-        BLINK,
-        BLINK_PATCHED,
-        BLINK2,
-        BLINK2_PATCHED,
-        APPLY_PATCH,
-        APPLY_BLINK,
-        APPLY_BLINK2;
-
-
-        @Override
-        public String toString() {
-            return switch (this) {
-                case NORMAL -> "normal";
-                case BLINK -> "blink";
-                case BLINK2 -> "blink2";
-                case NORMAL_PATCHED -> "normal_patched";
-                case BLINK_PATCHED -> "blink_patched";
-                case BLINK2_PATCHED -> "blink2_patched";
-                case APPLY_BLINK -> "apply_blink";
-                case APPLY_BLINK2 -> "apply_blink2";
-                case APPLY_PATCH -> "apply_patch";
-            };
-        }
-    }
-
-    public static void patchTextureToRemoveZFightingWithOtherTexture(NativeImage baseImage, NativeImage otherImage) throws IndexOutOfBoundsException {
-        //here we alter the first image removing all pixels that are present in the second image to prevent z fighting
-        //this does not support transparency and is a hard counter to f-fighting
-        try {
-            if (otherImage.getWidth() == baseImage.getWidth() && otherImage.getHeight() == baseImage.getHeight()) {
-                //float widthMultipleEmissive  = originalCopy.getWidth()  / (float)emissive.getWidth();
-                //float heightMultipleEmissive = originalCopy.getHeight() / (float)emissive.getHeight();
-
-                for (int x = 0; x < baseImage.getWidth(); x++) {
-                    for (int y = 0; y < baseImage.getHeight(); y++) {
-                        //int newX = Math.min((int)(x*widthMultipleEmissive),originalCopy.getWidth()-1);
-                        //int newY = Math.min((int)(y*heightMultipleEmissive),originalCopy.getHeight()-1);
-                        if (otherImage.getOpacity(x, y) != 0) {
-                            baseImage.setColor(x, y, 0);
-                        }
-                    }
-                }
-            }
-            //return baseImage;
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new IndexOutOfBoundsException("additional texture is not the correct size, ETF has crashed in the patching stage");
-        }
-    }
-
-    private static boolean doesAnimaticaVersionExist(Identifier identifier) {
-        if (identifier == null) return false;
-        String idString = identifier.toString();
-        //check if its already an anim and animatica has already gotten to replacing it before etf sees it
-        if (idString.endsWith("-anim")) return true;
-        //check if animatica has registered its animated version of this texture
-        return MinecraftClient.getInstance().getTextureManager().getOrDefault(new Identifier(idString + "-anim"), null) != null;
-    }
-
-    private boolean hasPatched = false;
     public void assertPatchedTextures() {
         if (!this.isEmissive() || hasPatched) {
             return;
         }
         hasPatched = true;
 
-        ResourceManager files = MinecraftClient.getInstance().getResourceManager();
+        ResourceManager files = Minecraft.getInstance().getResourceManager();
         //should this process cancel itself due to presence of PBR textures
-        if ((ETFVersionDifferenceHandler.isThisModLoaded("iris") || ETFVersionDifferenceHandler.isThisModLoaded("oculus")) &&
+        if ((ETF.isThisModLoaded("iris") || ETF.isThisModLoaded("oculus")) &&
                 //do pbr files exist?
                 (files.getResource(ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_s.png")).isPresent() ||
                         files.getResource(ETFUtils2.replaceIdentifier(thisIdentifier, ".png", "_n.png")).isPresent())
@@ -706,10 +678,10 @@ public class ETFTexture {
         }
 
         //should patching cancel due to presence of animation mods and animated textures
-        if (((ETFVersionDifferenceHandler.isThisModLoaded("animatica")) && (
+        if (((ETF.isThisModLoaded("animatica")) && (
                 doesAnimaticaVersionExist(thisIdentifier)
                         || doesAnimaticaVersionExist(emissiveIdentifier)
-        ) || (ETFVersionDifferenceHandler.isThisModLoaded("moremcmeta") &&
+        ) || (ETF.isThisModLoaded("moremcmeta") &&
                 (files.getResource(ETFUtils2.replaceIdentifier(thisIdentifier, ".png", ".png.mcmeta")).isPresent() ||
                         files.getResource(ETFUtils2.replaceIdentifier(thisIdentifier, ".png", ".png.moremcmeta")).isPresent())
         )
@@ -728,7 +700,7 @@ public class ETFTexture {
         boolean didPatch = false;
 
         //patch out emissive textures for shader z fighting fix
-        if (this.emissiveIdentifier != null && ETFConfigData.enableEmissiveTextures) {
+        if (this.emissiveIdentifier != null) {// && ETF.config().getConfig().enableEmissiveTextures) {
             //create patched texture
             NativeImage emissiveImage = ETFUtils2.getNativeImageElseNull(emissiveIdentifier);
             try {
@@ -759,20 +731,48 @@ public class ETFTexture {
 
             //save successful patches after any iris or other future patching reasons
             if (didPatch) {
-                thisIdentifier_Patched = new Identifier(PATCH_NAMESPACE_PREFIX + thisIdentifier.getNamespace(), thisIdentifier.getPath());
+                thisIdentifier_Patched = ETFUtils2.res(PATCH_NAMESPACE_PREFIX + thisIdentifier.getNamespace(), thisIdentifier.getPath());
                 ETFUtils2.registerNativeImageToIdentifier(newBaseTexture, thisIdentifier_Patched);
                 ETFManager.getInstance().ETF_TEXTURE_CACHE.put(thisIdentifier_Patched, this);
                 if (doesBlink()) {
-                    blinkIdentifier_Patched = new Identifier(PATCH_NAMESPACE_PREFIX + blinkIdentifier.getNamespace(), blinkIdentifier.getPath());
+                    blinkIdentifier_Patched = ETFUtils2.res(PATCH_NAMESPACE_PREFIX + blinkIdentifier.getNamespace(), blinkIdentifier.getPath());
                     ETFUtils2.registerNativeImageToIdentifier(newBlinkTexture, blinkIdentifier_Patched);
                     ETFManager.getInstance().ETF_TEXTURE_CACHE.put(blinkIdentifier_Patched, this);
                     if (doesBlink2()) {
-                        blink2Identifier_Patched = new Identifier(PATCH_NAMESPACE_PREFIX + blink2Identifier.getNamespace(), blink2Identifier.getPath());
+                        blink2Identifier_Patched = ETFUtils2.res(PATCH_NAMESPACE_PREFIX + blink2Identifier.getNamespace(), blink2Identifier.getPath());
                         ETFUtils2.registerNativeImageToIdentifier(newBlink2Texture, blink2Identifier_Patched);
                         ETFManager.getInstance().ETF_TEXTURE_CACHE.put(blink2Identifier_Patched, this);
                     }
                 }
             }
+        }
+    }
+
+    public enum TextureReturnState {
+        NORMAL,
+        NORMAL_PATCHED,
+        BLINK,
+        BLINK_PATCHED,
+        BLINK2,
+        BLINK2_PATCHED,
+        APPLY_PATCH,
+        APPLY_BLINK,
+        APPLY_BLINK2;
+
+
+        @Override
+        public String toString() {
+            return switch (this) {
+                case NORMAL -> "normal";
+                case BLINK -> "blink";
+                case BLINK2 -> "blink2";
+                case NORMAL_PATCHED -> "normal_patched";
+                case BLINK_PATCHED -> "blink_patched";
+                case BLINK2_PATCHED -> "blink2_patched";
+                case APPLY_BLINK -> "apply_blink";
+                case APPLY_BLINK2 -> "apply_blink2";
+                case APPLY_PATCH -> "apply_patch";
+            };
         }
     }
 

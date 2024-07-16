@@ -1,9 +1,6 @@
 package traben.entity_texture_features.features.property_reading.properties.optifine_properties;
 
 
-import net.minecraft.text.PlainTextContent;
-import net.minecraft.text.Text;
-import net.minecraft.text.TextContent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import traben.entity_texture_features.features.property_reading.properties.generic_properties.StringArrayOrRegexProperty;
@@ -13,6 +10,15 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentContents;
+#if MC > MC_20_2
+import net.minecraft.network.chat.contents.PlainTextContents;
+#else
+import net.minecraft.network.chat.contents.LiteralContents;
+#endif
+import net.minecraft.world.entity.player.Player;
 
 public class NameProperty extends StringArrayOrRegexProperty {
 
@@ -67,12 +73,19 @@ public class NameProperty extends StringArrayOrRegexProperty {
 
     @Override
     public @Nullable String getValueFromEntity(ETFEntity etfEntity) {
+        if (etfEntity instanceof Player player) {
+            return player.getName().getString();
+        }
         if (etfEntity.etf$hasCustomName()) {
-            Text entityNameText = etfEntity.etf$getCustomName();
+            Component entityNameText = etfEntity.etf$getCustomName();
             if (entityNameText != null) {
-                TextContent content = entityNameText.getContent();
-                if (content instanceof PlainTextContent.Literal literal) {
-                    return literal.string();
+                ComponentContents content = entityNameText.getContents();
+                #if MC > MC_20_2
+                if (content instanceof PlainTextContents.LiteralContents literal) {
+                #else
+                if (content instanceof LiteralContents literal) {
+                #endif
+                    return literal.text();
                 } else {
                     return entityNameText.getString();
                 }
@@ -81,10 +94,6 @@ public class NameProperty extends StringArrayOrRegexProperty {
         return null;
     }
 
-    @Override
-    public boolean isPropertyUpdatable() {
-        return true;
-    }
 
     @Override
     public @NotNull String[] getPropertyIds() {

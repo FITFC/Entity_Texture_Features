@@ -2,7 +2,7 @@ plugins {
     id "com.github.johnrengelman.shadow" version "8.1.1"
 }
 
-archivesBaseName = rootProject.archives_base_name + "_neoforge_1.20.3"
+archivesBaseName = rootProject.archives_base_name + "_neoforge_${rootProject.minecraft_version}"
 
 architectury {
     platformSetupLoomIde()
@@ -44,7 +44,7 @@ dependencies {
     // Remove the next line if you don't want to depend on the API
     //modApi "dev.architectury:architectury-neoforge:${rootProject.architectury_version}"
 
-    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+//    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 
     common(project(path: ":common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":common", configuration: "transformProductionNeoForge")) { transitive = false }
@@ -53,24 +53,24 @@ dependencies {
     shadow('org.apache.httpcomponents:httpmime:4.5.14')
 
 
-    modImplementation("maven.modrinth:3dskinlayers:${project.skinlayers_version_forge}") {
-        //exclude(group: "net.fabricmc.fabric-api")
-    }
+//    modImplementation("maven.modrinth:3dskinlayers:${project.skinlayers_version_forge}") {
+//        //exclude(group: "net.fabricmc.fabric-api")
+//    }
 
     include group: 'org.apache.httpcomponents', name: 'httpmime', version: '4.5.10'
     implementation group: 'org.apache.httpcomponents', name: 'httpmime', version: '4.5.10'
 }
 
-processResources {
-    inputs.property "version", project.version
-
-    filesMatching("META-INF/mods.toml") {
-        expand "version": project.version
-    }
-}
 
 shadowJar {
     exclude "fabric.mod.json"
+    int mc = project.mc_build as int
+    if (mc > 5) {
+        exclude "META-INF/mods.toml"
+    }else{
+        exclude "META-INF/neoforge.mods.toml"
+    }
+
     exclude "architectury.common.json"
 
     configurations = [project.configurations.shadowCommon]
@@ -80,7 +80,7 @@ shadowJar {
 
 remapJar {
 
-    atAccessWideners.add('entity_texture_features.accesswidener')
+    atAccessWideners.add("entity_texture_features_${project.mc_build}.accesswidener")
     input.set shadowJar.archiveFile
     dependsOn shadowJar
 //    classifier null

@@ -1,10 +1,6 @@
 package traben.entity_texture_features.features.property_reading;
 
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.Nullable;
 import traben.entity_texture_features.ETFApi;
 import traben.entity_texture_features.features.texture_handlers.ETFDirectory;
@@ -13,11 +9,17 @@ import traben.entity_texture_features.utils.ETFUtils2;
 
 import java.util.UUID;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+
 public class TrueRandomProvider implements ETFApi.ETFVariantSuffixProvider {
 
 
     private final int suffixTotal;
     private final String packname;
+    protected EntityRandomSeedFunction entityRandomSeedFunction = (entity) -> entity.etf$getUuid().hashCode();
 
     private TrueRandomProvider(String secondPack, int suffixes) {
         this.suffixTotal = suffixes;
@@ -25,15 +27,15 @@ public class TrueRandomProvider implements ETFApi.ETFVariantSuffixProvider {
     }
 
     @Nullable
-    public static TrueRandomProvider of(Identifier vanillaIdentifier) {
+    public static TrueRandomProvider of(ResourceLocation vanillaIdentifier) {
 
 
-        ResourceManager resources = MinecraftClient.getInstance().getResourceManager();
+        ResourceManager resources = Minecraft.getInstance().getResourceManager();
 
-        Identifier second = ETFDirectory.getDirectoryVersionOf(ETFUtils2.addVariantNumberSuffix(vanillaIdentifier, 2));
+        ResourceLocation second = ETFDirectory.getDirectoryVersionOf(ETFUtils2.addVariantNumberSuffix(vanillaIdentifier, 2));
         if (second != null) {
-            String secondPack = resources.getResource(second).map(Resource::getResourcePackName).orElse(null);
-            String vanillaPack = resources.getResource(vanillaIdentifier).map(Resource::getResourcePackName).orElse(null);
+            String secondPack = resources.getResource(second).map(Resource::sourcePackId).orElse(null);
+            String vanillaPack = resources.getResource(vanillaIdentifier).map(Resource::sourcePackId).orElse(null);
 
             if (secondPack != null
                     && secondPack.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(secondPack, vanillaPack))) {
@@ -78,9 +80,13 @@ public class TrueRandomProvider implements ETFApi.ETFVariantSuffixProvider {
     @Override
     public int getSuffixForETFEntity(ETFEntity entityToBeTested) {
         if (entityToBeTested == null) return 0;
-        int randomSeededByUUID = Math.abs(entityToBeTested.etf$getUuid().hashCode());
-        return (randomSeededByUUID % suffixTotal) + 1;
+        return (Math.abs(entityRandomSeedFunction.toInt(entityToBeTested)) % suffixTotal) + 1;
     }
 
-
+    @Override
+    public void setRandomSupplier(final EntityRandomSeedFunction entityRandomSeedFunction) {
+        if (entityRandomSeedFunction != null) {
+            this.entityRandomSeedFunction = entityRandomSeedFunction;
+        }
+    }
 }

@@ -1,69 +1,77 @@
 package traben.entity_texture_features.features.texture_handlers;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.Sprite;
-import net.minecraft.client.texture.SpriteContents;
-import net.minecraft.client.texture.SpriteDimensions;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.metadata.ResourceMetadata;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.MathHelper;
+#if MC <= MC_20_1
+import net.minecraft.client.resources.metadata.animation.AnimationMetadataSection;
+#endif
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import com.mojang.blaze3d.platform.NativeImage;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.Optional;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.SpriteContents;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.metadata.animation.FrameSize;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceMetadata;
+import net.minecraft.util.Mth;
+import traben.entity_texture_features.utils.ETFUtils2;
+
 public class ETFSprite {
 
     public final boolean isETFAltered;
-    private final Sprite sprite;
+    private final TextureAtlasSprite sprite;
     //private final Sprite selfVariant;
-    private final Sprite emissiveSprite;
+    private final TextureAtlasSprite emissiveSprite;
 
-    public ETFSprite(@NotNull Sprite originalSprite, @NotNull ETFTexture etfTexture) {
+    public ETFSprite(@NotNull TextureAtlasSprite originalSprite, @NotNull ETFTexture etfTexture, boolean isNotVariant) {
 
 
         // the component ETFTexture at-least confirms the existence of the other component textures of the sprite atlas
         // we can use the atlas source to get these sprites for this object to hold
         // the ETFTexture already has all the checks for emissive and variant
 
-
-        if (etfTexture.getVariantNumber() != 0) {
-            Identifier variantId = etfTexture.getTextureIdentifier(null);
-            Optional<Resource> resource = MinecraftClient.getInstance().getResourceManager().getResource(variantId);
+        //force original if not variant
+        if (isNotVariant) {
+            sprite = originalSprite;
+            isETFAltered = false;
+        } else {
+            ResourceLocation variantId = etfTexture.getTextureIdentifier(null);
+            Optional<Resource> resource = Minecraft.getInstance().getResourceManager().getResource(variantId);
             if (resource.isPresent()) {
-                Sprite possibleVariant = null;
+                TextureAtlasSprite possibleVariant = null;
 
-                try (SpriteContents contents = load(new Identifier(variantId + "-etf_sprite"), resource.get())) {
+                try (SpriteContents contents = load(ETFUtils2.res(variantId + "-etf_sprite"), resource.get())) {
                     if (contents != null)
-                        possibleVariant = new Sprite(variantId, contents, contents.getWidth(), contents.getHeight(), 0, 0);
+                        possibleVariant = new TextureAtlasSprite(variantId, contents, contents.width(), contents.height(), 0, 0);
 
                 }
                 sprite = Objects.requireNonNullElse(possibleVariant, originalSprite);
+                isETFAltered = possibleVariant != null;
             } else {
                 sprite = originalSprite;
+                isETFAltered = false;
             }
-        } else {
-            sprite = originalSprite;
         }
 
-        isETFAltered = !sprite.equals(originalSprite);
+//        isETFAltered = !sprite.equals(originalSprite);
 
 
-        Sprite possibleEmissive = null;
+        TextureAtlasSprite possibleEmissive = null;
         if (etfTexture.eSuffix != null) {
-            Identifier emissiveId = etfTexture.getEmissiveIdentifierOfCurrentState();
+            ResourceLocation emissiveId = etfTexture.getEmissiveIdentifierOfCurrentState();
             if (emissiveId != null) {
-                Optional<Resource> resource = MinecraftClient.getInstance().getResourceManager().getResource(emissiveId);
+                Optional<Resource> resource = Minecraft.getInstance().getResourceManager().getResource(emissiveId);
                 if (resource.isPresent()) {
 
-                    try (SpriteContents contents = load(new Identifier(emissiveId + "-etf_sprite"), resource.get())) {
+                    try (SpriteContents contents = load(ETFUtils2.res(emissiveId + "-etf_sprite"), resource.get())) {
                         if (contents != null)
-                            possibleEmissive = new Sprite(emissiveId, contents, contents.getWidth(), contents.getHeight(), 0, 0);
+                            possibleEmissive = new TextureAtlasSprite(emissiveId, contents, contents.width(), contents.height(), 0, 0);
                     }
                 }
             }
@@ -72,45 +80,43 @@ public class ETFSprite {
     }
 
     @Nullable
-    public static SpriteContents load(Identifier id, Resource resource) {
+    public static SpriteContents load(ResourceLocation id, Resource resource) {
+        #if MC > MC_20_1
         ResourceMetadata animationResourceMetadata;
         try {
-            //animationResourceMetadata = resource.getMetadata().decode(AnimationResourceMetadata.READER).orElse(AnimationResourceMetadata.EMPTY);
-            animationResourceMetadata = resource.getMetadata();
+            animationResourceMetadata = resource.metadata();
+        #else
+        AnimationMetadataSection animationResourceMetadata;
+        try {
+            animationResourceMetadata = resource.metadata().getSection(AnimationMetadataSection.SERIALIZER).orElse(AnimationMetadataSection.EMPTY);
+        #endif
         } catch (Exception var8) {
-//            LOGGER.error("Unable to parse metadata from {}", id, var8);
             return null;
         }
 
         NativeImage nativeImage;
         try {
-            InputStream inputStream = resource.getInputStream();
+            InputStream inputStream = resource.open();
 
             try {
                 nativeImage = NativeImage.read(inputStream);
             } catch (Throwable var9) {
-                if (inputStream != null) {
-                    try {
-                        inputStream.close();
-                    } catch (Throwable var7) {
-                        var9.addSuppressed(var7);
-                    }
+                try {
+                    inputStream.close();
+                } catch (Throwable var7) {
+                    var9.addSuppressed(var7);
                 }
-
                 throw var9;
             }
-
-            //if (inputStream != null) {
             inputStream.close();
-            //}
         } catch (IOException var10) {
 //            LOGGER.error("Using missing texture, unable to load {}", id, var10);
             return null;
         }
 
         //SpriteDimensions spriteDimensions = animationResourceMetadata.getSize(nativeImage.getWidth(), nativeImage.getHeight());
-        SpriteDimensions spriteDimensions = new SpriteDimensions(nativeImage.getWidth(), nativeImage.getHeight());
-        if (MathHelper.isMultipleOf(nativeImage.getWidth(), spriteDimensions.width()) && MathHelper.isMultipleOf(nativeImage.getHeight(), spriteDimensions.height())) {
+        FrameSize spriteDimensions = new FrameSize(nativeImage.getWidth(), nativeImage.getHeight());
+        if (Mth.isMultipleOf(nativeImage.getWidth(), spriteDimensions.width()) && Mth.isMultipleOf(nativeImage.getHeight(), spriteDimensions.height())) {
             return new SpriteContents(id, spriteDimensions, nativeImage, animationResourceMetadata);
         } else {
 //            LOGGER.error("Image {} size {},{} is not multiple of frame size {},{}", new Object[]{id, nativeImage.getWidth(), nativeImage.getHeight(), spriteDimensions.width(), spriteDimensions.height()});
@@ -120,7 +126,7 @@ public class ETFSprite {
     }
 
     @NotNull
-    public Sprite getEmissive() {
+    public TextureAtlasSprite getEmissive() {
         return emissiveSprite;
     }
 
@@ -129,7 +135,7 @@ public class ETFSprite {
     }
 
     @NotNull
-    public Sprite getSpriteVariant() {
+    public TextureAtlasSprite getSpriteVariant() {
         return sprite;
     }
 

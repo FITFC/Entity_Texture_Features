@@ -1,30 +1,32 @@
 package traben.entity_texture_features.features;
 
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.SpriteTexturedVertexConsumer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.util.Identifier;
-import traben.entity_texture_features.features.texture_handlers.ETFTexture;
+import org.jetbrains.annotations.Nullable;
+import traben.entity_texture_features.ETF;
+import traben.entity_texture_features.config.ETFConfig;
 import traben.entity_texture_features.utils.ETFEntity;
+import traben.entity_texture_features.utils.ETFRenderLayerWithTexture;
+import traben.entity_texture_features.utils.ETFVertexConsumer;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import java.util.Optional;
-import java.util.function.Function;
+
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.resources.ResourceLocation;
 
 public class ETFRenderContext {
 
-//    private static Object currentTopPart = null;
 
     public static boolean renderingFeatures = false;
-    private static VertexConsumerProvider currentProvider = null;
+
     private static boolean allowRenderLayerTextureModify = true;
-    private static RenderLayer currentRenderLayer = null;
-    private static ETFTexture currentETFTexture = null;
+    private static boolean limitModifyToProperties = false;
     private static ETFEntity currentEntity = null;
     private static int currentModelPartDepth = 0;
 
 
     private static boolean isInSpecialRenderOverlayPhase = false;
+    private static boolean allowedToPatch = false;
 
     public static boolean isRenderingFeatures() {
         return renderingFeatures;
@@ -35,7 +37,7 @@ public class ETFRenderContext {
     }
 
     public static boolean isAllowedToRenderLayerTextureModify() {
-        return allowRenderLayerTextureModify;
+        return allowRenderLayerTextureModify && ETF.config().getConfig().canDoCustomTextures();
     }
 
     public static void preventRenderLayerTextureModify() {
@@ -46,121 +48,7 @@ public class ETFRenderContext {
         ETFRenderContext.allowRenderLayerTextureModify = true;
     }
 
-    public static ETFTexture getCurrentETFTexture() {
-        return currentETFTexture;
-    }
-
-//    public static void setCurrentTopPart(Object currentTopPart) {
-//        ETFRenderContext.currentTopPart = currentTopPart;
-//    }
-
-    @SuppressWarnings("unused")
-    public static void setCurrentETFTexture(ETFTexture currentETFTexture) {
-        ETFRenderContext.currentETFTexture = currentETFTexture;
-    }
-
-    public static VertexConsumer processVertexConsumer(VertexConsumerProvider provider, RenderLayer renderLayer) {
-
-        currentETFTexture = null;
-        ETFRenderContext.currentRenderLayer = renderLayer;
-        //sprites will give the atlas id if not handled separately, and the only hook in seems to be the consumer
-        if (renderLayer instanceof RenderLayer.MultiPhase multiPhase) {//
-
-//            RenderLayer.MultiPhaseParameters params = multiPhase.phases;
-//            RenderPhase.TextureBase base = params.texture;
-            Optional<Identifier> possibleId = multiPhase.phases.texture.getId();
-            // ETFManager.getInstance().getETFTexture(texture,ETFRenderContext.getCurrentEntity(), ETFManager.TextureSource.ENTITY,false);
-            possibleId.ifPresent(identifier -> currentETFTexture = ETFManager.getInstance().getETFTextureNoVariation(identifier));
-
-
-            //modify render layer if needed
-            if (!multiPhase.isOutline() && getCurrentEntity() != null && ETFManager.getInstance().ENTITY_TYPE_RENDER_LAYER.containsKey(getCurrentEntity().etf$getType())) {
-                preventRenderLayerTextureModify();
-                switch (ETFManager.getInstance().ENTITY_TYPE_RENDER_LAYER.getInt(getCurrentEntity().etf$getType())) {
-                    case 1 -> {
-                        Identifier newId = currentETFTexture.getTextureIdentifier(getCurrentEntity());
-                        //noinspection ConstantValue
-                        if(newId != null)
-                            currentRenderLayer = RenderLayer.getEntityTranslucent(newId);
-                    }
-                    case 2 -> {
-                        Identifier newId = currentETFTexture.getTextureIdentifier(getCurrentEntity());
-                        //noinspection ConstantValue
-                        if (newId != null)
-                            currentRenderLayer = RenderLayer.getEntityTranslucentCull(newId);
-                    }
-                    case 3 -> currentRenderLayer = RenderLayer.getEndGateway();
-                    case 4 ->{
-                        Identifier newId = currentETFTexture.getTextureIdentifier(getCurrentEntity());
-                        //noinspection ConstantValue
-                        if (newId != null)
-                            currentRenderLayer = RenderLayer.getOutline(newId);
-                    }
-                    default -> {
-                    }
-                }
-                allowRenderLayerTextureModify();
-            }
-        } else {
-            System.out.println("failed 3565683856");
-        }
-        return provider.getBuffer(currentRenderLayer);
-    }
-
-    public static VertexConsumer processSpriteVertexConsumer(Function<Identifier, RenderLayer> layerFactory, VertexConsumer consumer) {
-        currentETFTexture = null;
-
-        //sprites have a special vertex consumer with their atlas texture
-        //see if we need to break that
-        //note this will prevent sprite animations, but only if ETF features are found
-        if (consumer instanceof SpriteTexturedVertexConsumer spriteTexturedVertexConsumer) {
-            Identifier rawId = spriteTexturedVertexConsumer.sprite.getContents().getId();
-
-            //infer actual texture
-            Identifier actualTexture;
-            if (rawId.toString().endsWith(".png")) {
-                actualTexture = rawId;
-            } else {
-                //todo check all block entities follow this logic? i know chests, shulker boxes, and beds do
-                actualTexture = new Identifier(rawId.getNamespace(), "textures/" + rawId.getPath() + ".png");
-            }
-
-            //System.out.println("raw="+rawId+"\nactual="+actualTexture);
-
-            currentETFTexture = ETFManager.getInstance().getETFTextureVariant(actualTexture, ETFRenderContext.getCurrentEntity());
-
-            //if texture is emissive or a variant send in as a non sprite vertex consumer
-            if (currentETFTexture.getVariantNumber() != 0 || currentETFTexture.isEmissive()) {
-                preventRenderLayerTextureModify();
-                currentRenderLayer = layerFactory.apply(currentETFTexture.thisIdentifier);
-                allowRenderLayerTextureModify();
-                return ETFRenderContext.getCurrentProvider().getBuffer(currentRenderLayer);
-            }
-        }
-        return consumer;
-    }
-
-    public static VertexConsumerProvider getCurrentProvider() {
-        return currentProvider;
-    }
-
-//    public static Object getCurrentTopPart() {
-//        return currentTopPart;
-//    }
-
-    public static void setCurrentProvider(VertexConsumerProvider currentProvider) {
-        ETFRenderContext.currentProvider = currentProvider;
-    }
-
-    public static RenderLayer getCurrentRenderLayer() {
-        return currentRenderLayer;
-    }
-
-    @SuppressWarnings("unused")
-    public static void setCurrentRenderLayer(RenderLayer currentRenderLayer) {
-        ETFRenderContext.currentRenderLayer = currentRenderLayer;
-    }
-
+    @Nullable
     public static ETFEntity getCurrentEntity() {
         return currentEntity;
     }
@@ -171,8 +59,26 @@ public class ETFRenderContext {
         ETFRenderContext.currentEntity = currentEntity;
     }
 
-    public static boolean isRenderReady() {
-        return currentRenderLayer != null && currentProvider != null && currentEntity != null && currentETFTexture != null;
+    public static boolean canRenderInBrightMode() {
+        boolean setForBrightMode = ETFManager.getEmissiveMode() == ETFConfig.EmissiveRenderModes.BRIGHT;
+        if (setForBrightMode) {
+            if (currentEntity != null) {
+                return currentEntity.etf$canBeBright();// && !ETFRenderContext.getCurrentETFTexture().isPatched_CurrentlyOnlyArmor();
+            } else {
+                //establish default rule
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean shouldEmissiveUseCullingLayer() {
+        if (currentEntity != null) {
+            return currentEntity.etf$isBlockEntity();
+        } else {
+            //establish default rule
+            return true;
+        }
     }
 
     public static int getCurrentModelPartDepth() {
@@ -192,15 +98,11 @@ public class ETFRenderContext {
     }
 
     public static void reset() {
-        currentETFTexture = null;
-        //currentProvider = null;
-//        currentTopPart = null;
         currentModelPartDepth = 0;
-
-        currentRenderLayer = null;
         currentEntity = null;
         allowedToPatch = false;
         allowRenderLayerTextureModify = true;
+        limitModifyToProperties = false;
     }
 
     @SuppressWarnings("unused")//used in EMF
@@ -223,8 +125,60 @@ public class ETFRenderContext {
     public static void allowTexturePatching() {
         allowedToPatch = true;
     }
+
+    public static void allowOnlyPropertiesRandom(){
+        limitModifyToProperties = true;
+    }
+
+    public static void allowAllRandom(){
+        limitModifyToProperties = false;
+    }
+
+    public static boolean isRandomLimitedToProperties(){
+        return limitModifyToProperties;
+    }
+
     public static void preventTexturePatching() {
         allowedToPatch = false;
     }
-    private static boolean allowedToPatch = false;
+
+    public static RenderType modifyRenderLayerIfRequired(RenderType value) {
+
+        if (isCurrentlyRenderingEntity()
+                && isAllowedToRenderLayerTextureModify()) {
+            var layer = ETF.config().getConfig().getRenderLayerOverride();
+            if (layer != null
+                    && !value.isOutline()
+                    && value instanceof ETFRenderLayerWithTexture multiphase) {
+
+                Optional<ResourceLocation> texture = multiphase.etf$getId();
+                if (texture.isPresent()) {
+                    preventRenderLayerTextureModify();
+
+                    RenderType forReturn = switch (layer) {
+                        case TRANSLUCENT -> RenderType.entityTranslucent(texture.get());
+                        case TRANSLUCENT_CULL -> RenderType.entityTranslucentCull(texture.get());
+                        case END -> RenderType.endGateway();
+                        case OUTLINE -> RenderType.outline(texture.get());
+                    };
+                    allowRenderLayerTextureModify();
+                    return forReturn;
+
+                }
+            }
+        }
+        return value;
+    }
+
+    public static void insertETFDataIntoVertexConsumer(MultiBufferSource provider, RenderType renderLayer, VertexConsumer vertexConsumer) {
+        if (isCurrentlyRenderingEntity() && vertexConsumer instanceof ETFVertexConsumer etfVertexConsumer) {
+            //need to store etf texture of consumer and original render layer
+            //store provider as well for future actions
+            etfVertexConsumer.etf$initETFVertexConsumer(provider, renderLayer);
+        }
+    }
+
+    public static boolean isCurrentlyRenderingEntity() {
+        return currentEntity != null;
+    }
 }

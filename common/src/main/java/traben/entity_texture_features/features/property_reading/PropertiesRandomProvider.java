@@ -1,10 +1,7 @@
 package traben.entity_texture_features.features.property_reading;
 
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import traben.entity_texture_features.ETFApi;
 import traben.entity_texture_features.features.ETFManager;
@@ -17,6 +14,12 @@ import traben.entity_texture_features.utils.ETFUtils2;
 import traben.entity_texture_features.utils.EntityBooleanLRU;
 
 import java.util.*;
+import java.util.function.BiConsumer;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
 
 public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider {
 
@@ -26,17 +29,20 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
     protected final EntityBooleanLRU entityCanUpdate = new EntityBooleanLRU(1000);
 
     protected final String packname;
+    protected EntityRandomSeedFunction entityRandomSeedFunction = (entity) -> entity.etf$getUuid().hashCode();
+    protected BiConsumer<ETFEntity, @Nullable RandomPropertyRule> onMeetsRule = (entity, rule) -> {
+    };
 
-    private PropertiesRandomProvider(Identifier propertiesFileIdentifier, List<RandomPropertyRule> propertyRules) {
+    private PropertiesRandomProvider(ResourceLocation propertiesFileIdentifier, List<RandomPropertyRule> propertyRules) {
         this.propertyRules = propertyRules;
-        this.packname = MinecraftClient.getInstance().getResourceManager().getResource(propertiesFileIdentifier)
-                .map(Resource::getResourcePackName)
+        this.packname = Minecraft.getInstance().getResourceManager().getResource(propertiesFileIdentifier)
+                .map(Resource::sourcePackId)
                 .orElse("vanilla");
     }
 
     @Nullable
-    public static PropertiesRandomProvider of(Identifier initialPropertiesFileIdentifier, Identifier vanillaIdentifier, String... suffixKeyName) {
-        Identifier propertiesFileIdentifier = ETFDirectory.getDirectoryVersionOf(initialPropertiesFileIdentifier);
+    public static PropertiesRandomProvider of(ResourceLocation initialPropertiesFileIdentifier, ResourceLocation vanillaIdentifier, String... suffixKeyName) {
+        ResourceLocation propertiesFileIdentifier = ETFDirectory.getDirectoryVersionOf(initialPropertiesFileIdentifier);
         if (propertiesFileIdentifier == null) return null;
 
         try {
@@ -55,9 +61,9 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
                 return null;
             }
 
-            ResourceManager resourceManager = MinecraftClient.getInstance().getResourceManager();
-            String properties = resourceManager.getResource(propertiesFileIdentifier).map(Resource::getResourcePackName).orElse(null);
-            String vanillaPack = resourceManager.getResource(vanillaIdentifier).map(Resource::getResourcePackName).orElse(null);
+            ResourceManager resourceManager = Minecraft.getInstance().getResourceManager();
+            String properties = resourceManager.getResource(propertiesFileIdentifier).map(Resource::sourcePackId).orElse(null);
+            String vanillaPack = resourceManager.getResource(vanillaIdentifier).map(Resource::sourcePackId).orElse(null);
 
             if (properties != null
                     && properties.equals(ETFUtils2.returnNameOfHighestPackFromTheseTwo(properties, vanillaPack))) {
@@ -70,28 +76,10 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
         return null;
     }
 
-    public static List<RandomPropertyRule> getAllValidPropertyObjects(Properties properties, Identifier propertiesFilePath, String... suffixToTest) {
+    public static List<RandomPropertyRule> getAllValidPropertyObjects(Properties properties, ResourceLocation propertiesFilePath, String... suffixToTest) {
         Set<String> propIds = properties.stringPropertyNames();
         //set so only 1 of each
-        Set<Integer> foundRuleNumbers = new HashSet<>();
-
-        //get the foundRuleNumbers we are working with
-        for (String str :
-                propIds) {
-            String[] split = str.split("\\.");
-            if (split.length >= 2 && !split[1].isBlank()) {
-                String possibleRuleNumber = split[1].replaceAll("\\D", "");
-                if (!possibleRuleNumber.isBlank()) {
-                    try {
-                        foundRuleNumbers.add(Integer.parseInt(possibleRuleNumber));
-                    } catch (NumberFormatException e) {
-                        //ETFUtils2.logWarn("properties file number error in start count");
-                    }
-                }
-            }
-        }
-        //sort from lowest to largest
-        List<Integer> numbersList = new ArrayList<>(foundRuleNumbers);
+        List<Integer> numbersList = getCaseNumbers(propIds);
         Collections.sort(numbersList);
         List<RandomPropertyRule> allRulesOfProperty = new ArrayList<>();
         for (Integer ruleNumber :
@@ -118,6 +106,29 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
         return allRulesOfProperty;
     }
 
+    @NotNull
+    private static List<Integer> getCaseNumbers(final Set<String> propIds) {
+        Set<Integer> foundRuleNumbers = new HashSet<>();
+
+        //get the foundRuleNumbers we are working with
+        for (String str :
+                propIds) {
+            String[] split = str.split("\\.");
+            if (split.length >= 2 && !split[1].isBlank()) {
+                String possibleRuleNumber = split[1].replaceAll("\\D", "");
+                if (!possibleRuleNumber.isBlank()) {
+                    try {
+                        foundRuleNumbers.add(Integer.parseInt(possibleRuleNumber));
+                    } catch (NumberFormatException e) {
+                        //ETFUtils2.logWarn("properties file number error in start count");
+                    }
+                }
+            }
+        }
+        //sort from lowest to largest
+        return new ArrayList<>(foundRuleNumbers);
+    }
+
     @Nullable
     private static Integer[] getSuffixes(Properties props, int num, String... suffixToTest) {
         return SimpleIntegerArrayProperty.getGenericIntegerSplitWithRanges(props, num, suffixToTest);
@@ -126,6 +137,12 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
     @Nullable
     private static Integer[] getWeights(Properties props, int num) {
         return SimpleIntegerArrayProperty.getGenericIntegerSplitWithRanges(props, num, "weights");
+    }
+
+    @SuppressWarnings("unused")
+    public void setOnMeetsRuleHook(BiConsumer<ETFEntity, RandomPropertyRule> onMeetsRule) {
+        if (onMeetsRule != null)
+            this.onMeetsRule = onMeetsRule;
     }
 
     public String getPackName() {
@@ -153,7 +170,6 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
         return propertyRules.size();
     }
 
-
     @Override
     public int getSuffixForETFEntity(ETFEntity entityToBeTested) {
         if (entityToBeTested == null) return 0;
@@ -161,17 +177,19 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
         boolean entityHasBeenTestedBefore = entityCanUpdate.containsKey(id);
         if (entityHasBeenTestedBefore) {
             //return andNothingElse
-            for (RandomPropertyRule testCase : propertyRules) {
-                if (testCase.doesEntityMeetConditionsOfThisCase(entityToBeTested, true, entityCanUpdate)) {
-                    return testCase.getVariantSuffixFromThisCase(id);
+            for (RandomPropertyRule rule : propertyRules) {
+                if (rule.doesEntityMeetConditionsOfThisCase(entityToBeTested, true, entityCanUpdate)) {
+                    onMeetsRule.accept(entityToBeTested, rule);
+                    return rule.getVariantSuffixFromThisCase(entityRandomSeedFunction.toInt(entityToBeTested));
                 }
             }
         } else {
             //return but capture spawn conditions of first time entity
-            int foundSuffix = -1;
+            int foundSuffix = 0;
             for (RandomPropertyRule rule : propertyRules) {
                 if (rule.doesEntityMeetConditionsOfThisCase(entityToBeTested, false, entityCanUpdate)) {
-                    foundSuffix = rule.getVariantSuffixFromThisCase(id);
+                    onMeetsRule.accept(entityToBeTested, rule);
+                    foundSuffix = rule.getVariantSuffixFromThisCase(entityRandomSeedFunction.toInt(entityToBeTested));
                     break;
                 }
             }
@@ -181,9 +199,17 @@ public class PropertiesRandomProvider implements ETFApi.ETFVariantSuffixProvider
                     rule.cacheEntityInitialResultsOfNonUpdatingProperties(entityToBeTested);
                 }
             }
-            return foundSuffix == -1 ? 0 : foundSuffix;
+            return foundSuffix;
         }
+        onMeetsRule.accept(entityToBeTested, null);
         return 0;
+    }
+
+    @Override
+    public void setRandomSupplier(final EntityRandomSeedFunction entityRandomSeedFunction) {
+        if (entityRandomSeedFunction != null) {
+            this.entityRandomSeedFunction = entityRandomSeedFunction;
+        }
     }
 
 

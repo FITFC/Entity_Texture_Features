@@ -1,85 +1,104 @@
 package traben.entity_texture_features.mixin.entity.renderer;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.WorldRenderer;
-import net.minecraft.client.render.entity.EntityRenderer;
-import net.minecraft.client.render.entity.EntityRendererFactory;
-import net.minecraft.client.render.entity.PaintingEntityRenderer;
-import net.minecraft.client.texture.Sprite;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.decoration.painting.PaintingEntity;
-import net.minecraft.entity.decoration.painting.PaintingVariant;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.RotationAxis;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.PaintingRenderer;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.decoration.Painting;
+import net.minecraft.world.entity.decoration.PaintingVariant;
+#if MC < MC_20_6
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+#endif
+
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import traben.entity_texture_features.ETFClientCommon;
+import traben.entity_texture_features.ETF;
 import traben.entity_texture_features.features.ETFManager;
 import traben.entity_texture_features.features.ETFRenderContext;
 import traben.entity_texture_features.features.texture_handlers.ETFSprite;
 import traben.entity_texture_features.features.texture_handlers.ETFTexture;
 import traben.entity_texture_features.utils.ETFEntity;
+import traben.entity_texture_features.utils.ETFUtils2;
 
-@Mixin(PaintingEntityRenderer.class)
-public abstract class MixinPaintingEntityRenderer extends EntityRenderer<PaintingEntity> {
+@Mixin(PaintingRenderer.class)
+public abstract class MixinPaintingEntityRenderer extends EntityRenderer<Painting> {
 
 
+
+    #if MC >= MC_20_6
+    @Shadow protected abstract void vertex(final PoseStack.Pose matrix, final VertexConsumer vertexConsumer, final float x, final float y, final float u, final float v, final float z, final int normalX, final int normalY, final int normalZ, final int light);
+    #else
+    @Shadow protected abstract void vertex(final Matrix4f matrix4f, final Matrix3f matrix3f, final VertexConsumer vertexConsumer, final float f, final float g, final float h, final float i, final float j, final int k, final int l, final int m, final int n);
+    #endif
     @Unique
-    private static final Identifier etf$BACK_SPRITE_ID = new Identifier("textures/painting/back.png");
-
+    private static final ResourceLocation etf$BACK_SPRITE_ID = ETFUtils2.res("textures/painting/back.png");
 
     @SuppressWarnings("unused")
-    protected MixinPaintingEntityRenderer(EntityRendererFactory.Context ctx) {
+    protected MixinPaintingEntityRenderer(EntityRendererProvider.Context ctx) {
         super(ctx);
     }
 
-    @Shadow
-    protected abstract void vertex(Matrix4f positionMatrix, Matrix3f normalMatrix, VertexConsumer vertexConsumer, float x, float y, float u, float v, float z, int normalX, int normalY, int normalZ, int light);
+
 
     @Inject(
-            method = "render(Lnet/minecraft/entity/decoration/painting/PaintingEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
+            method = "render(Lnet/minecraft/world/entity/decoration/Painting;FFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V",
             at = @At(value = "HEAD"), cancellable = true)
-    private void etf$getSprites(PaintingEntity paintingEntity, float f, float g, MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, int i, CallbackInfo ci) {
+    private void etf$getSprites(Painting paintingEntity, float f, float g, PoseStack matrixStack, MultiBufferSource vertexConsumerProvider, int i, CallbackInfo ci) {
         try {
-            Sprite paintingSprite = MinecraftClient.getInstance().getPaintingManager().getPaintingSprite(paintingEntity.getVariant().value());
-            Identifier paintingId = paintingSprite.getContents().getId();
-            Identifier paintingTexture = new Identifier(paintingId.getNamespace(), "textures/painting/" + paintingId.getPath() + ".png");
-
+            TextureAtlasSprite paintingSprite = Minecraft.getInstance().getPaintingTextures().get(paintingEntity.getVariant().value());
+            ResourceLocation paintingId = paintingSprite.contents().name();
+            String paintingFileName = paintingId.getPath();
+            ResourceLocation paintingTexture = ETFUtils2.res(paintingId.getNamespace(), "textures/painting/" + paintingFileName + ".png");
             ETFEntity etfEntity = (ETFEntity) paintingEntity;
 
-            ETFTexture frontTexture = ETFManager.getInstance().getETFTextureVariant(paintingTexture, etfEntity);
-            ETFSprite etf$Sprite = frontTexture.getSprite(paintingSprite);
+            boolean aztec = "aztec".equals(paintingFileName);
+            if (aztec) ETFRenderContext.allowOnlyPropertiesRandom();
 
+            ETFTexture frontTexture = ETFManager.getInstance().getETFTextureVariant(paintingTexture, etfEntity);
+            ETFSprite etf$Sprite = frontTexture.getPaintingSprite(paintingSprite, paintingTexture);
+
+            if (aztec) ETFRenderContext.allowAllRandom();
 
             ETFTexture backTexture = ETFManager.getInstance().getETFTextureVariant(etf$BACK_SPRITE_ID, etfEntity);
-            ETFSprite etf$BackSprite = backTexture.getSprite(MinecraftClient.getInstance().getPaintingManager().getBackSprite());
+            ETFSprite etf$BackSprite = backTexture.getPaintingSprite(Minecraft.getInstance().getPaintingTextures().getBackSprite(), etf$BACK_SPRITE_ID);
+
 
             if (etf$Sprite.isETFAltered || etf$Sprite.isEmissive() || etf$BackSprite.isETFAltered || etf$BackSprite.isEmissive()) {
-                matrixStack.push();
-                matrixStack.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0F - f));
+
+                matrixStack.pushPose();
+                matrixStack.mulPose(Axis.YP.rotationDegrees(180.0F - f));
                 PaintingVariant paintingVariant = paintingEntity.getVariant().value();
-                matrixStack.scale(0.0625F, 0.0625F, 0.0625F);
+
+                #if MC < MC_21 matrixStack.scale(0.0625F, 0.0625F, 0.0625F); #endif
+
+                int width =  paintingVariant. #if MC < MC_21 getWidth()  #else width()  #endif ;
+                int height = paintingVariant. #if MC < MC_21 getHeight() #else height() #endif ;
+
 
                 etf$renderETFPainting(matrixStack,
                         vertexConsumerProvider,
                         paintingEntity,
-                        paintingVariant.getWidth(),
-                        paintingVariant.getHeight(),
+                        width,
+                        height,
                         etf$Sprite,
                         etf$BackSprite);
-                matrixStack.pop();
+                matrixStack.popPose();
                 super.render(paintingEntity, f, g, matrixStack, vertexConsumerProvider, i);
                 ci.cancel();
             }
@@ -92,170 +111,173 @@ public abstract class MixinPaintingEntityRenderer extends EntityRenderer<Paintin
     }
 
     @Unique
-    private void etf$renderETFPainting(MatrixStack matrices, VertexConsumerProvider vertexConsumerProvider, PaintingEntity entity, int width, int height, ETFSprite ETFPaintingSprite, ETFSprite ETFBackSprite) {
+    private void etf$renderETFPainting(PoseStack matrices, MultiBufferSource vertexConsumerProvider, Painting entity, int width, int height, ETFSprite ETFPaintingSprite, ETFSprite ETFBackSprite) {
         ETFRenderContext.preventRenderLayerTextureModify();
-        VertexConsumer vertexConsumerFront = vertexConsumerProvider.getBuffer(RenderLayer.getEntitySolid(ETFPaintingSprite.getSpriteVariant().getAtlasId()));
+        VertexConsumer vertexConsumerFront = vertexConsumerProvider.getBuffer(RenderType.entitySolid(ETFPaintingSprite.getSpriteVariant().atlasLocation()));
         etf$renderETFPaintingFront(matrices, vertexConsumerFront, entity, width, height, ETFPaintingSprite.getSpriteVariant(), false);
 
-        VertexConsumer vertexConsumerBack = vertexConsumerProvider.getBuffer(RenderLayer.getEntitySolid(ETFBackSprite.getSpriteVariant().getAtlasId()));
+        VertexConsumer vertexConsumerBack = vertexConsumerProvider.getBuffer(RenderType.entitySolid(ETFBackSprite.getSpriteVariant().atlasLocation()));
         etf$renderETFPaintingBack(matrices, vertexConsumerBack, entity, width, height, ETFBackSprite.getSpriteVariant(), false);
 
         if (ETFPaintingSprite.isEmissive()) {
-            vertexConsumerFront = vertexConsumerProvider.getBuffer(RenderLayer.getEntityTranslucentCull(ETFPaintingSprite.getEmissive().getAtlasId()));
+            vertexConsumerFront = vertexConsumerProvider.getBuffer(RenderType.entityTranslucentCull(ETFPaintingSprite.getEmissive().atlasLocation()));
             etf$renderETFPaintingFront(matrices, vertexConsumerFront, entity, width, height, ETFPaintingSprite.getEmissive(), true);
         }
 
         if (ETFBackSprite.isEmissive()) {
-            vertexConsumerFront = vertexConsumerProvider.getBuffer(RenderLayer.getEntityTranslucentCull(ETFBackSprite.getEmissive().getAtlasId()));
+            vertexConsumerFront = vertexConsumerProvider.getBuffer(RenderType.entityTranslucentCull(ETFBackSprite.getEmissive().atlasLocation()));
             etf$renderETFPaintingBack(matrices, vertexConsumerFront, entity, width, height, ETFBackSprite.getEmissive(), true);
         }
         ETFRenderContext.allowRenderLayerTextureModify();
     }
 
-    @SuppressWarnings("SuspiciousNameCombination")
     @Unique
-    private void etf$renderETFPaintingFront(MatrixStack matrices, VertexConsumer vertexConsumerFront, PaintingEntity entity, int width, int height, Sprite paintingSprite, boolean emissive) {
+    private void etf$renderETFPaintingFront(PoseStack matrices, VertexConsumer vertexConsumerFront, Painting entity, int width, int height, TextureAtlasSprite paintingSprite, boolean emissive) {
 
-        MatrixStack.Entry entry = matrices.peek();
-        Matrix4f matrix4f = entry.getPositionMatrix();
-        Matrix3f matrix3f = entry.getNormalMatrix();
+        PoseStack.Pose entry = matrices.last();
+//        Matrix4f matrix4f = entry.getPositionMatrix();
+//        Matrix3f matrix3f = entry.getNormalMatrix();
 
         float f = (float) (-width) / 2.0F;
         float g = (float) (-height) / 2.0F;
-        int u = width / 16;
-        int v = height / 16;
+        int u = #if MC < MC_21 width / 16  #else width #endif ;
+        int v = #if MC < MC_21 height / 16 #else height #endif ;
         double d = 1.0 / (double) u;
         double e = 1.0 / (double) v;
 
         for (int w = 0; w < u; ++w) {
             for (int x = 0; x < v; ++x) {
-                float y = f + (float) ((w + 1) * 16);
-                float z = f + (float) (w * 16);
-                float aa = g + (float) ((x + 1) * 16);
-                float ab = g + (float) (x * 16);
+                float y = f + (float) ((w + 1) #if MC < MC_21  * 16 #endif);
+                float z = f + (float) (w #if MC < MC_21  * 16 #endif);
+                float aa = g + (float) ((x + 1) #if MC < MC_21  * 16 #endif);
+                float ab = g + (float) (x #if MC < MC_21  * 16 #endif);
 
                 int light;
                 if (emissive) {
-                    light = ETFClientCommon.EMISSIVE_FEATURE_LIGHT_VALUE;
+                    light = ETF.EMISSIVE_FEATURE_LIGHT_VALUE;
                 } else {
+
                     int ac = entity.getBlockX();
-                    int ad = MathHelper.floor(entity.getY() + (double) ((aa + ab) / 2.0F / 16.0F));
+                    int ad = Mth.floor(entity.getY() + (double) ((aa + ab) / 2.0F #if MC < MC_21  / 16F #endif));
                     int ae = entity.getBlockZ();
-                    Direction direction = entity.getHorizontalFacing();
+                    Direction direction = entity.getDirection();
                     if (direction == Direction.NORTH) {
-                        ac = MathHelper.floor(entity.getX() + (double) ((y + z) / 2.0F / 16.0F));
+                        ac = Mth.floor(entity.getX() + (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
                     if (direction == Direction.WEST) {
-                        ae = MathHelper.floor(entity.getZ() - (double) ((y + z) / 2.0F / 16.0F));
+                        ae = Mth.floor(entity.getZ() - (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
                     if (direction == Direction.SOUTH) {
-                        ac = MathHelper.floor(entity.getX() - (double) ((y + z) / 2.0F / 16.0F));
+                        ac = Mth.floor(entity.getX() - (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
                     if (direction == Direction.EAST) {
-                        ae = MathHelper.floor(entity.getZ() + (double) ((y + z) / 2.0F / 16.0F));
+                        ae = Mth.floor(entity.getZ() + (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
-                    light = WorldRenderer.getLightmapCoordinates(entity.getWorld(), new BlockPos(ac, ad, ae));
+                    light = LevelRenderer.getLightColor(entity.level(), new BlockPos(ac, ad, ae));
                 }
 
-                float ag = paintingSprite.getFrameU((float) (d * (double) (u - w)));
-                float ah = paintingSprite.getFrameU((float) (d * (double) (u - (w + 1))));
-                float ai = paintingSprite.getFrameV((float) (e * (double) (v - x)));
-                float aj = paintingSprite.getFrameV((float) (e * (double) (v - (x + 1))));
-                this.vertex(matrix4f, matrix3f, vertexConsumerFront, y, ab, ah, ai, -0.5F, 0, 0, -1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerFront, z, ab, ag, ai, -0.5F, 0, 0, -1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerFront, z, aa, ag, aj, -0.5F, 0, 0, -1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerFront, y, aa, ah, aj, -0.5F, 0, 0, -1, light);
+                float zConst = #if MC < MC_21  0.5F #else 0.03125F #endif ;
+
+                float ag = paintingSprite.getU((float) (d * (double) (u - w)));
+                float ah = paintingSprite.getU((float) (d * (double) (u - (w + 1))));
+                float ai = paintingSprite.getV((float) (e * (double) (v - x)));
+                float aj = paintingSprite.getV((float) (e * (double) (v - (x + 1))));
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerFront, y, ab, ah, ai, -zConst, 0, 0, -1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerFront, z, ab, ag, ai, -zConst, 0, 0, -1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerFront, z, aa, ag, aj, -zConst, 0, 0, -1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerFront, y, aa, ah, aj, -zConst, 0, 0, -1, light);
 
             }
         }
 
     }
 
-    @SuppressWarnings("SuspiciousNameCombination")
     @Unique
-    private void etf$renderETFPaintingBack(MatrixStack matrices, VertexConsumer vertexConsumerBack, PaintingEntity entity, int width, int height, Sprite backSprite, boolean emissive) {
+    private void etf$renderETFPaintingBack(PoseStack matrices, VertexConsumer vertexConsumerBack, Painting entity, int width, int height, TextureAtlasSprite backSprite, boolean emissive) {
 
-        MatrixStack.Entry entry = matrices.peek();
-        Matrix4f matrix4f = entry.getPositionMatrix();
-        Matrix3f matrix3f = entry.getNormalMatrix();
+        PoseStack.Pose entry = matrices.last();
+//        Matrix4f matrix4f = entry.getPositionMatrix();
+//        Matrix3f matrix3f = entry.getNormalMatrix();
 
 
         float f = (float) (-width) / 2.0F;
         float g = (float) (-height) / 2.0F;
         //float h = 0.5F;
-        float i = backSprite.getMinU();
-        float j = backSprite.getMaxU();
-        float k = backSprite.getMinV();
-        float l = backSprite.getMaxV();
-        float m = backSprite.getMinU();
-        float n = backSprite.getMaxU();
-        float o = backSprite.getMinV();
-        float p = backSprite.getFrameV(0.0625F);
-        float q = backSprite.getMinU();
-        float r = backSprite.getFrameU(0.0625F);
-        float s = backSprite.getMinV();
-        float t = backSprite.getMaxV();
-        int u = width / 16;
-        int v = height / 16;
+        float i = backSprite.getU0();
+        float j = backSprite.getU1();
+        float k = backSprite.getV0();
+        float l = backSprite.getV1();
+        float m = backSprite.getU0();
+        float n = backSprite.getU1();
+        float o = backSprite.getV0();
+        float p = backSprite.getV(0.0625F);
+        float q = backSprite.getU0();
+        float r = backSprite.getU(0.0625F);
+        float s = backSprite.getV0();
+        float t = backSprite.getV1();
+        int u = #if MC < MC_21 width / 16  #else width #endif ;
+        int v = #if MC < MC_21 height / 16 #else height #endif ;
 
         for (int w = 0; w < u; ++w) {
             for (int x = 0; x < v; ++x) {
-                float y = f + (float) ((w + 1) * 16);
-                float z = f + (float) (w * 16);
-                float aa = g + (float) ((x + 1) * 16);
-                float ab = g + (float) (x * 16);
+                float y = f + (float) ((w + 1) #if MC < MC_21  * 16 #endif);
+                float z = f + (float) (w #if MC < MC_21  * 16 #endif);
+                float aa = g + (float) ((x + 1) #if MC < MC_21  * 16 #endif);
+                float ab = g + (float) (x #if MC < MC_21  * 16 #endif);
 
                 int light;
                 if (emissive) {
-                    light = ETFClientCommon.EMISSIVE_FEATURE_LIGHT_VALUE;
+                    light = ETF.EMISSIVE_FEATURE_LIGHT_VALUE;
                 } else {
                     int ac = entity.getBlockX();
-                    int ad = MathHelper.floor(entity.getY() + (double) ((aa + ab) / 2.0F / 16.0F));
+                    int ad = Mth.floor(entity.getY() + (double) ((aa + ab) / 2.0F #if MC < MC_21  / 16F #endif));
                     int ae = entity.getBlockZ();
-                    Direction direction = entity.getHorizontalFacing();
+                    Direction direction = entity.getDirection();
                     if (direction == Direction.NORTH) {
-                        ac = MathHelper.floor(entity.getX() + (double) ((y + z) / 2.0F / 16.0F));
+                        ac = Mth.floor(entity.getX() + (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
                     if (direction == Direction.WEST) {
-                        ae = MathHelper.floor(entity.getZ() - (double) ((y + z) / 2.0F / 16.0F));
+                        ae = Mth.floor(entity.getZ() - (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
                     if (direction == Direction.SOUTH) {
-                        ac = MathHelper.floor(entity.getX() - (double) ((y + z) / 2.0F / 16.0F));
+                        ac = Mth.floor(entity.getX() - (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
                     if (direction == Direction.EAST) {
-                        ae = MathHelper.floor(entity.getZ() + (double) ((y + z) / 2.0F / 16.0F));
+                        ae = Mth.floor(entity.getZ() + (double) ((y + z) / 2.0F #if MC < MC_21  / 16F #endif));
                     }
 
-                    light = WorldRenderer.getLightmapCoordinates(entity.getWorld(), new BlockPos(ac, ad, ae));
+                    light = LevelRenderer.getLightColor(entity.level(), new BlockPos(ac, ad, ae));
                 }
 
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, aa, j, k, 0.5F, 0, 0, 1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, aa, i, k, 0.5F, 0, 0, 1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, ab, i, l, 0.5F, 0, 0, 1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, ab, j, l, 0.5F, 0, 0, 1, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, aa, m, o, -0.5F, 0, 1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, aa, n, o, -0.5F, 0, 1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, aa, n, p, 0.5F, 0, 1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, aa, m, p, 0.5F, 0, 1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, ab, m, o, 0.5F, 0, -1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, ab, n, o, 0.5F, 0, -1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, ab, n, p, -0.5F, 0, -1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, ab, m, p, -0.5F, 0, -1, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, aa, r, s, 0.5F, -1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, ab, r, t, 0.5F, -1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, ab, q, t, -0.5F, -1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, y, aa, q, s, -0.5F, -1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, aa, r, s, -0.5F, 1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, ab, r, t, -0.5F, 1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, ab, q, t, 0.5F, 1, 0, 0, light);
-                this.vertex(matrix4f, matrix3f, vertexConsumerBack, z, aa, q, s, 0.5F, 1, 0, 0, light);
+                float zConst = #if MC < MC_21  0.5F #else 0.03125F #endif ;
+
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, aa, j, k, zConst, 0, 0, 1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, aa, i, k, zConst, 0, 0, 1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, ab, i, l, zConst, 0, 0, 1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, ab, j, l, zConst, 0, 0, 1, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, aa, m, o, -zConst, 0, 1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, aa, n, o, -zConst, 0, 1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, aa, n, p, zConst, 0, 1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, aa, m, p, zConst, 0, 1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, ab, m, o, zConst, 0, -1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, ab, n, o, zConst, 0, -1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, ab, n, p, -zConst, 0, -1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, ab, m, p, -zConst, 0, -1, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, aa, r, s, zConst, -1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, ab, r, t, zConst, -1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, ab, q, t, -zConst, -1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, y, aa, q, s, -zConst, -1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, aa, r, s, -zConst, 1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, ab, r, t, -zConst, 1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, ab, q, t, zConst, 1, 0, 0, light);
+                this.vertex(#if MC >= MC_20_6 entry #else entry.pose(), entry.normal() #endif , vertexConsumerBack, z, aa, q, s, zConst, 1, 0, 0, light);
 
             }
         }

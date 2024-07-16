@@ -1,6 +1,5 @@
 package traben.entity_texture_features.features.property_reading.properties.optifine_properties;
 
-import net.minecraft.entity.passive.VillagerEntity;
 import org.jetbrains.annotations.NotNull;
 import traben.entity_texture_features.features.property_reading.properties.generic_properties.SimpleIntegerArrayProperty;
 import traben.entity_texture_features.features.property_reading.properties.generic_properties.StringArrayOrRegexProperty;
@@ -9,6 +8,8 @@ import traben.entity_texture_features.utils.ETFEntity;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Properties;
+
+import net.minecraft.world.entity.npc.VillagerDataHolder;
 
 public class ProfessionProperty extends StringArrayOrRegexProperty {
 
@@ -28,7 +29,7 @@ public class ProfessionProperty extends StringArrayOrRegexProperty {
 
     @Override
     public boolean testEntityInternal(ETFEntity entity) {
-        if (entity instanceof VillagerEntity villagerEntity) {
+        if (entity instanceof VillagerDataHolder villagerEntity) {
             String entityProfession = villagerEntity.getVillagerData().getProfession().toString().toLowerCase().replace("minecraft:", "");
             int entityProfessionLevel = villagerEntity.getVillagerData().getLevel();
             boolean check = false;
@@ -91,11 +92,6 @@ public class ProfessionProperty extends StringArrayOrRegexProperty {
         return null;
     }
 
-
-    @Override
-    public boolean isPropertyUpdatable() {
-        return true;
-    }
 
     @Override
     public @NotNull String[] getPropertyIds() {

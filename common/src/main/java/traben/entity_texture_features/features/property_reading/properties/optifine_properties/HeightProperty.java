@@ -6,7 +6,6 @@ import traben.entity_texture_features.utils.ETFEntity;
 
 import java.util.Properties;
 
-import static traben.entity_texture_features.ETFClientCommon.ETFConfigData;
 
 public class HeightProperty extends SimpleIntegerArrayProperty {
 
@@ -36,10 +35,6 @@ public class HeightProperty extends SimpleIntegerArrayProperty {
         }
     }
 
-    @Override
-    public boolean isPropertyUpdatable() {
-        return !ETFConfigData.restrictHeight;
-    }
 
     @Override
     public @NotNull String[] getPropertyIds() {

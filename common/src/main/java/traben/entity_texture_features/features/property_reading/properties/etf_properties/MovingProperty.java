@@ -25,13 +25,9 @@ public class MovingProperty extends BooleanProperty {
     @Override
     @Nullable
     protected Boolean getValueFromEntity(ETFEntity etfEntity) {
-        return etfEntity.etf$getVelocity().horizontalLength() != 0;
+        return etfEntity.etf$getVelocity().horizontalDistance() != 0;
     }
 
-    @Override
-    public boolean isPropertyUpdatable() {
-        return false;
-    }
 
     @Override
     public @NotNull String[] getPropertyIds() {
